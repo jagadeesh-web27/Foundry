@@ -56,8 +56,11 @@
   }
 
   .app-shell {
-    min-height: 100dvh;
-    min-height: 100svh;
+    /* A fixed height (not min-height): every screen gets exactly the visible viewport, so only the
+       inner content areas scroll and the header / input / bottom bar stay in place. dvh follows the
+       mobile browser bars and the on-screen keyboard. */
+    height: 100vh;
+    height: 100dvh;
     padding-top: var(--safe-top);
     padding-bottom: var(--safe-bottom);
     box-sizing: border-box;
@@ -67,7 +70,8 @@
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior-y: contain;
-    touch-action: pan-y;
+    /* pan + pinch-zoom (pan-y alone blocked zoom and sideways scrolling of code blocks) */
+    touch-action: manipulation;
   }
 
   /* High contrast mode support (WCAG 2.2 AA) */
@@ -129,13 +133,56 @@ html {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Responsive touch target sizing for primary mobile navigation and inputs */
+/* Icon buttons: compact with a mouse, at least 44x44 CSS px on touch screens (WCAG 2.5.5).
+   In the components layer so utilities such as sm:min-w-0 can still override it. */
+@layer components {
+  .touch-target {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2.25rem;
+    min-height: 2.25rem;
+  }
+  @media (pointer: coarse) {
+    .touch-target,
+    nav button,
+    [role="tablist"] button,
+    .mobile-touch-target {
+      min-height: 44px;
+      min-width: 44px;
+    }
+  }
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Touch screens: native-feeling overlay scrolling without desktop scrollbars. */
 @media (pointer: coarse) {
-  nav button,
-  [role="tablist"] button,
-  .mobile-touch-target {
-    min-height: 44px;
-    min-width: 44px;
+  * {
+    scrollbar-width: none;
+  }
+  *::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Phones: no text below 12px. Several screens use 10-11px labels designed for desktop density.
+   Unlayered, so it wins over the Tailwind utility of the same class name below the sm breakpoint. */
+@media (max-width: 639px) {
+  .text-\[9px\],
+  .text-\[10px\] {
+    font-size: 12px;
+  }
+  .text-\[11px\] {
+    font-size: 12.5px;
+  }
+  .text-xs {
+    font-size: 13.5px;
+    line-height: 1.45;
   }
 }
 

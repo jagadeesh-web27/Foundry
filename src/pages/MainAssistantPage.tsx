@@ -17,6 +17,7 @@ import {
   Volume2,
   VolumeX,
   Cpu,
+  X,
 } from 'lucide-react';
 import { useApp } from '@/stores/AppContext';
 import { useVoiceInput } from '@/hooks/useVoiceInput';
@@ -27,6 +28,9 @@ import { FolderResultCard } from '@/components/chat/FolderResultCard';
 import { ChatSidebar } from '@/components/chat/ChatSidebar';
 import { AssistantHeader, AssistantTabType } from '@/components/chat/AssistantHeader';
 import { AssistantTabs } from '@/components/chat/AssistantTabs';
+import { MobileTabBar } from '@/components/chat/MobileTabBar';
+import { MarkdownText } from '@/components/chat/MarkdownText';
+import { toolLabel } from '@/components/chat/toolLabels';
 import { AssistantModals } from '@/components/chat/AssistantModals';
 
 export const MainAssistantPage: React.FC = () => {
@@ -53,6 +57,16 @@ export const MainAssistantPage: React.FC = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isLocalAISetupOpen, setIsLocalAISetupOpen] = useState(false);
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
+  // The AI-setup banner can be dismissed for the session (it is still reachable from the header).
+  const [aiBannerDismissed, setAiBannerDismissed] = useState(() => {
+    try {
+      return sessionStorage.getItem('foundry_ai_banner_dismissed') === '1';
+    } catch {
+      return false;
+    }
+  });
+  // On touch devices, do not pop the keyboard over the screen as soon as the chat opens.
+  const isTouchDevice = typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches;
 
   // Assistant Chat Hook
   const {
@@ -150,7 +164,7 @@ export const MainAssistantPage: React.FC = () => {
   }
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-[var(--bg-primary)] text-[var(--text-main)] font-sans antialiased">
+    <div className="flex h-full w-full overflow-hidden bg-[var(--bg-primary)] text-[var(--text-main)] font-sans antialiased">
       {/* ChatGPT-Style Left History Sidebar */}
       <ChatSidebar
         isOpen={isSidebarOpen}
@@ -183,26 +197,44 @@ export const MainAssistantPage: React.FC = () => {
           onOpenSettings={() => setIsSettingsOpen(true)}
         />
 
-        {/* Android Local AI Setup Warning Banner if needed */}
-        {(settings.ai.provider === 'android_local' || settings.ai.provider === 'desktop_local') && !aiStatus?.isAvailable && (
-          <div
-            onClick={() => setIsLocalAISetupOpen(true)}
-            className="bg-amber-500/10 hover:bg-amber-500/15 border-b border-amber-500/20 px-3 py-2 flex items-center justify-between cursor-pointer transition-colors flex-shrink-0"
-          >
-            <div className="flex items-center gap-2 text-xs text-amber-300">
-              <Cpu className="w-4 h-4 text-amber-400 shrink-0" />
-              <span>
-                <strong>
-                  {aiStatus?.state === 'MODEL_LOADING' ? 'On-Device AI is starting:' : 'On-Device AI setup required:'}
-                </strong>{' '}
-                {aiStatus?.state === 'MODEL_LOADING'
-                  ? 'loading the local model into memory. This takes a moment.'
-                  : 'Install the local AI model so Foundry can answer questions with no internet and no extra software.'}
+        {/* On-device AI setup / loading banner (compact on phones, dismissible) */}
+        {(settings.ai.provider === 'android_local' || settings.ai.provider === 'desktop_local') && !aiStatus?.isAvailable && !aiBannerDismissed && (
+          <div className="bg-amber-500/10 border-b border-amber-500/20 flex items-stretch flex-shrink-0">
+            <button
+              type="button"
+              onClick={() => setIsLocalAISetupOpen(true)}
+              className="flex-1 min-w-0 px-3 py-2 flex items-center gap-2 text-left text-[13px] sm:text-xs text-amber-300 hover:bg-amber-500/15 transition-colors cursor-pointer"
+            >
+              <Cpu className="w-4 h-4 text-amber-400 shrink-0" aria-hidden="true" />
+              <span className="min-w-0">
+                <strong>{aiStatus?.state === 'MODEL_LOADING' ? 'On-device AI is starting' : 'Set up on-device AI'}</strong>
+                <span className="hidden sm:inline">
+                  {aiStatus?.state === 'MODEL_LOADING'
+                    ? ': loading the local model into memory. This takes a moment.'
+                    : ': install the local AI model so Foundry can answer questions with no internet and no extra software.'}
+                </span>
+                <span className="sm:hidden">{aiStatus?.state === 'MODEL_LOADING' ? '' : ' to answer general questions offline'}</span>
               </span>
-            </div>
-            <span className="text-[11px] font-semibold text-amber-400 bg-amber-500/20 px-2 py-0.5 rounded-md shrink-0">
-              Install Local AI →
-            </span>
+              <span className="ml-auto text-[12px] sm:text-[11px] font-semibold text-amber-400 bg-amber-500/20 px-2 py-1 rounded-md shrink-0">
+                {aiStatus?.state === 'MODEL_LOADING' ? 'Details' : 'Install'}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAiBannerDismissed(true);
+                try {
+                  sessionStorage.setItem('foundry_ai_banner_dismissed', '1');
+                } catch {
+                  // storage unavailable: dismissed for this session's render only
+                }
+              }}
+              className="touch-target text-amber-400/80 hover:text-amber-300 cursor-pointer shrink-0"
+              aria-label="Dismiss AI setup reminder"
+              title="Dismiss"
+            >
+              <X className="w-4 h-4" aria-hidden="true" />
+            </button>
           </div>
         )}
 
@@ -226,7 +258,7 @@ export const MainAssistantPage: React.FC = () => {
                 <div className="flex items-center space-x-2">
                   <Clock className="w-3.5 h-3.5 animate-spin" />
                   <span>
-                    I'm indexing your computer... Scanning <strong>{indexingCategory || 'directories'}</strong>
+                    Indexing your files... Scanning <strong>{indexingCategory || 'directories'}</strong>
                   </span>
                 </div>
                 <span className="text-[11px] text-blue-300/80">You can start chatting now</span>
@@ -234,7 +266,7 @@ export const MainAssistantPage: React.FC = () => {
             )}
 
             {/* Conversation Stream */}
-            <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
+            <div className="flex-1 overflow-y-auto overscroll-contain px-3 py-4 sm:p-4 md:p-6 space-y-5 sm:space-y-6">
               {turns.length === 0 ? (
                 /* Empty / Hero Screen */
                 <div className="h-full flex flex-col items-center justify-center text-center max-w-lg mx-auto space-y-6 py-12">
@@ -277,13 +309,16 @@ export const MainAssistantPage: React.FC = () => {
                     className={`flex space-x-3 ${turn.role === 'user' ? 'justify-end' : 'justify-start'}`}
                   >
                     {turn.role === 'assistant' && (
-                      <div className="w-7 h-7 rounded-lg bg-blue-600/10 border border-blue-500/20 text-blue-500 flex items-center justify-center shrink-0 mt-0.5">
+                      <div className="hidden sm:flex w-7 h-7 rounded-lg bg-blue-600/10 border border-blue-500/20 text-blue-500 flex items-center justify-center shrink-0 mt-0.5">
                         <Bot className="w-4 h-4" />
                       </div>
                     )}
 
                     <div
-                      className={`max-w-[85%] rounded-2xl px-4 py-3 text-xs leading-relaxed space-y-2.5 ${
+                      data-turn-role={turn.role}
+                      data-tools={(turn.toolsExecuted || []).join(',')}
+                      data-file-count={turn.files?.length ?? 0}
+                      className={`max-w-[92%] sm:max-w-[85%] rounded-2xl px-3.5 py-3 sm:px-4 text-[15px] sm:text-xs leading-relaxed space-y-2.5 ${
                         turn.role === 'user'
                           ? 'bg-blue-600 text-white rounded-tr-none shadow-xs'
                           : 'bg-[var(--bg-card)] border border-[var(--border-subtle)] text-[var(--text-main)] rounded-tl-none shadow-xs'
@@ -297,17 +332,19 @@ export const MainAssistantPage: React.FC = () => {
                               key={idx}
                               className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20"
                             >
-                              <Check className="w-2.5 h-2.5" />
-                              <span>{tool}</span>
+                              <Check className="w-2.5 h-2.5" aria-hidden="true" />
+                              <span>{toolLabel(tool)}</span>
                             </span>
                           ))}
                         </div>
                       )}
 
                       {/* Message Content */}
-                      <div className="whitespace-pre-wrap font-normal break-words leading-relaxed select-text">
-                        {turn.content}
-                      </div>
+                      {turn.role === 'assistant' ? (
+                        <MarkdownText text={turn.content} className="font-normal leading-relaxed select-text" />
+                      ) : (
+                        <div className="whitespace-pre-wrap font-normal break-words leading-relaxed select-text">{turn.content}</div>
+                      )}
 
                       {/* File Result Cards */}
                       {turn.files && turn.files.length > 0 && (
@@ -410,7 +447,7 @@ export const MainAssistantPage: React.FC = () => {
                     </div>
 
                     {turn.role === 'user' && (
-                      <div className="w-7 h-7 rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)] text-[var(--text-main)] flex items-center justify-center shrink-0 mt-0.5">
+                      <div className="hidden sm:flex w-7 h-7 rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)] text-[var(--text-main)] items-center justify-center shrink-0 mt-0.5">
                         <User className="w-4 h-4" />
                       </div>
                     )}
@@ -419,7 +456,7 @@ export const MainAssistantPage: React.FC = () => {
               )}
 
               {isProcessing && (
-                <div className="flex items-center space-x-2 text-xs text-[var(--text-faint)] pl-11" role="status" aria-live="polite">
+                <div className="flex items-center space-x-2 text-[13px] sm:text-xs text-[var(--text-faint)] sm:pl-11" role="status" aria-live="polite">
                   <Sparkles className="w-3.5 h-3.5 animate-spin text-blue-500" aria-hidden="true" />
                   <span>Thinking & searching your system...</span>
                 </div>
@@ -428,17 +465,18 @@ export const MainAssistantPage: React.FC = () => {
             </div>
 
             {/* Prominent Chat Input with Voice Button */}
-            <div className="p-4 border-t border-[var(--border-subtle)] flex-shrink-0 bg-[var(--bg-primary)]">
+            <div className="px-3 py-2.5 sm:p-4 border-t border-[var(--border-subtle)] flex-shrink-0 bg-[var(--bg-primary)]">
               <form onSubmit={handleSubmit} className="relative flex items-center">
                 <input
                   type="text"
-                  placeholder="Ask anything about your system or files... (e.g. Give accessibility tester resume)"
+                  placeholder={isTouchDevice ? 'Ask anything...' : 'Ask anything about your files or device... (e.g. find my resume)'}
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   disabled={isProcessing}
-                  className="w-full pl-4 pr-24 py-3.5 text-xs rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] text-[var(--text-main)] placeholder-[var(--text-faint)] focus:outline-none focus:border-blue-500 shadow-xs"
-                  aria-label="Ask anything about your system or files"
-                  autoFocus
+                  className="w-full pl-4 pr-28 sm:pr-24 py-3 sm:py-3.5 text-base sm:text-xs rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] text-[var(--text-main)] placeholder-[var(--text-faint)] focus:outline-none focus:border-blue-500 shadow-xs"
+                  aria-label="Ask Foundry"
+                  autoFocus={!isTouchDevice}
+                  enterKeyHint="send"
                 />
 
                 <div className="absolute right-2.5 flex items-center space-x-1.5">
@@ -448,7 +486,7 @@ export const MainAssistantPage: React.FC = () => {
                       type="button"
                       onClick={isListening ? stopListening : startListening}
                       disabled={isProcessing}
-                      className={`p-2 rounded-lg transition-colors cursor-pointer ${
+                      className={`touch-target sm:p-2 rounded-lg transition-colors cursor-pointer ${
                         isListening
                           ? 'bg-red-500 text-white animate-pulse'
                           : isTranscribing
@@ -476,7 +514,7 @@ export const MainAssistantPage: React.FC = () => {
                   <button
                     type="submit"
                     disabled={!input.trim() || isProcessing}
-                    className="p-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:hover:bg-blue-600 text-white transition-colors cursor-pointer shadow-xs"
+                    className="touch-target sm:p-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:hover:bg-blue-600 text-white transition-colors cursor-pointer shadow-xs"
                     aria-label="Send query"
                   >
                     <Send className="w-4 h-4" />
@@ -514,6 +552,9 @@ export const MainAssistantPage: React.FC = () => {
             </div>
           </div>
         )}
+
+        {/* Phone navigation between sections (desktop uses the header tabs) */}
+        <MobileTabBar activeTab={activeTab} onSelectTab={setActiveTab} />
       </div>
 
       {/* Modals */}

@@ -63,7 +63,7 @@ export const Modal: React.FC<ModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs"
+      className="fixed inset-0 z-50 flex items-stretch sm:items-center justify-center p-0 sm:p-4 bg-black/70 backdrop-blur-xs"
       role="dialog"
       aria-modal="true"
       aria-labelledby="modal-title"
@@ -71,17 +71,17 @@ export const Modal: React.FC<ModalProps> = ({
       <div
         ref={modalRef}
         tabIndex={-1}
-        className={`w-full ${maxWidth} bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg shadow-2xl outline-none flex flex-col max-h-[90vh]`}
+        className={`w-full ${maxWidth} bg-[var(--bg-card)] border-0 sm:border border-[var(--border-subtle)] rounded-none sm:rounded-lg shadow-2xl outline-none flex flex-col h-full sm:h-auto max-h-full sm:max-h-[90vh] pt-[var(--safe-top)] sm:pt-0 pb-[var(--safe-bottom)] sm:pb-0`}
       >
         {/* Modal Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-subtle)]">
+        <div className="flex items-center justify-between px-4 sm:px-5 py-2 sm:py-4 border-b border-[var(--border-subtle)] flex-shrink-0">
           <h2 id="modal-title" className="text-base font-semibold text-[var(--text-main)] m-0">
             {title}
           </h2>
           <button
             type="button"
             onClick={onClose}
-            className="p-1 rounded-md text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-[var(--bg-tertiary)] transition-colors"
+            className="touch-target rounded-md text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-[var(--bg-tertiary)] transition-colors"
             aria-label="Close dialog"
           >
             <X className="w-4 h-4" />
@@ -89,7 +89,7 @@ export const Modal: React.FC<ModalProps> = ({
         </div>
 
         {/* Modal Body */}
-        <div className="p-5 overflow-y-auto flex-1">{children}</div>
+        <div className="p-4 sm:p-5 overflow-y-auto overscroll-contain flex-1 min-h-0">{children}</div>
       </div>
     </div>
   );

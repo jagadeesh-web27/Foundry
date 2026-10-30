@@ -123,7 +123,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Foundry Settings" maxWidth="max-w-2xl">
-      <div className="space-y-6 text-xs max-h-[80vh] overflow-y-auto pr-1">
+      <div className="space-y-6 text-xs">
         {/* Privacy Banner */}
         <div className="p-3.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-start space-x-2.5 text-emerald-400">
           <ShieldCheck className="w-4 h-4 flex-shrink-0 mt-0.5" />
@@ -168,10 +168,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
               return (
                 <div
                   key={categoryKey}
-                  className="flex items-center justify-between p-2.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)]"
+                  className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-2.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)]"
                 >
-                  <div className="pr-3">
-                    <div className="flex items-center space-x-2">
+                  <div className="sm:pr-3 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
                       <span className="font-medium text-[var(--text-main)]">{cfg.name}</span>
                       <span
                         className={`text-[9px] px-1.5 py-0.5 rounded font-mono ${
@@ -180,13 +180,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                             : 'bg-blue-500/15 text-blue-400 border border-blue-500/30'
                         }`}
                       >
-                        {cfg.type}
+                        {cfg.type === 'ACTION' ? 'Action' : 'Read only'}
                       </span>
                     </div>
                     <div className="text-[10px] text-[var(--text-faint)] mt-0.5">{cfg.description}</div>
                   </div>
 
-                  <div className="flex items-center space-x-1 bg-[var(--bg-tertiary)] p-0.5 rounded border border-[var(--border-subtle)] flex-shrink-0">
+                  <div role="group" aria-label={`${cfg.name} permission`} className="grid grid-cols-3 sm:flex sm:items-center gap-1 bg-[var(--bg-tertiary)] p-0.5 rounded border border-[var(--border-subtle)] w-full sm:w-auto flex-shrink-0">
                     {(['allowed', 'ask', 'denied'] as PermissionStatus[]).map((status) => {
                       const isSelected = currentStatus === status;
                       return (
@@ -194,7 +194,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                           key={status}
                           type="button"
                           onClick={() => handlePermissionChange(categoryKey, status)}
-                          className={`px-2 py-1 rounded text-[10px] font-medium transition-colors capitalize cursor-pointer ${
+                          aria-pressed={isSelected}
+                          className={`min-h-[40px] sm:min-h-0 px-2 py-1 rounded text-[13px] sm:text-[10px] font-medium transition-colors capitalize cursor-pointer ${
                             isSelected
                               ? status === 'allowed'
                                 ? 'bg-emerald-600 text-white font-semibold shadow-xs'
