@@ -165,7 +165,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
         <button
           type="button"
           onClick={onToggleOpen}
-          className="p-2 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-[var(--bg-tertiary)] transition-colors cursor-pointer"
+          className="touch-target sm:p-2 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-[var(--bg-tertiary)] transition-colors cursor-pointer"
           title="Close Sidebar"
           aria-label="Close Sidebar"
         >
@@ -241,7 +241,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                             <button
                               type="button"
                               onClick={(e) => saveRename(conv.id, e)}
-                              className="p-1 hover:text-emerald-400 cursor-pointer"
+                              className="touch-target sm:p-1 hover:text-emerald-400 cursor-pointer"
                               title="Save Title"
                             >
                               <Check className="w-3 h-3" />
@@ -249,7 +249,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                             <button
                               type="button"
                               onClick={cancelRename}
-                              className="p-1 hover:text-rose-400 cursor-pointer"
+                              className="touch-target sm:p-1 hover:text-rose-400 cursor-pointer"
                               title="Cancel"
                             >
                               <X className="w-3 h-3" />
@@ -260,7 +260,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                             <button
                               type="button"
                               onClick={(e) => startRename(conv, e)}
-                              className="p-1 text-[var(--text-faint)] hover:text-[var(--text-main)] cursor-pointer"
+                              className="touch-target sm:p-1 text-[var(--text-faint)] hover:text-[var(--text-main)] cursor-pointer"
                               title="Rename Conversation"
                             >
                               <Edit2 className="w-3 h-3" />
@@ -268,7 +268,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                             <button
                               type="button"
                               onClick={(e) => handleDelete(conv.id, e)}
-                              className="p-1 text-[var(--text-faint)] hover:text-rose-400 cursor-pointer"
+                              className="touch-target sm:p-1 text-[var(--text-faint)] hover:text-rose-400 cursor-pointer"
                               title="Delete Conversation"
                             >
                               <Trash2 className="w-3 h-3" />

@@ -7,7 +7,9 @@ import React from 'react';
  */
 function renderInline(text: string, keyPrefix: string): React.ReactNode[] {
   const nodes: React.ReactNode[] = [];
-  const pattern = /(\*\*[^*\n]+\*\*|`[^`\n]+`|\*[^*\s][^*\n]*\*|_[^_\s][^_\n]*_)/g;
+  // Emphasis markers only count at word boundaries, so file names and identifiers such as
+  // my_resume_2026.pdf, PHYSICAL_RESUME_MARKER or 2*3*4 are left untouched.
+  const pattern = /(\*\*[^*\n]+\*\*|`[^`\n]+`|(?<![\w*])\*[^*\s][^*\n]*?\*(?![\w*])|(?<!\w)_[^_\s][^_\n]*?_(?!\w))/g;
   let last = 0;
   let match: RegExpExecArray | null;
   let i = 0;

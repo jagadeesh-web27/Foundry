@@ -195,7 +195,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                           type="button"
                           onClick={() => handlePermissionChange(categoryKey, status)}
                           aria-pressed={isSelected}
-                          className={`min-h-[40px] sm:min-h-0 px-2 py-1 rounded text-[13px] sm:text-[10px] font-medium transition-colors capitalize cursor-pointer ${
+                          className={`min-h-[44px] sm:min-h-0 px-2 py-1 rounded text-[13px] sm:text-[10px] font-medium transition-colors capitalize cursor-pointer ${
                             isSelected
                               ? status === 'allowed'
                                 ? 'bg-emerald-600 text-white font-semibold shadow-xs'

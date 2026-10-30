@@ -75,9 +75,8 @@
       "id": "read-resume",
       "query": "Read my resume",
       "expect": {
-        "any": [
-          "PHYSICAL_RESUME_MARKER",
-          "Wireless Android Tester"
+        "all": [
+          "PHYSICAL_RESUME_MARKER"
         ],
         "none": [
           "components, hooks"
@@ -97,12 +96,11 @@
       "id": "storage",
       "query": "How much storage is left?",
       "expect": {
-        "any": [
-          "GB",
-          "free",
-          "storage"
+        "all": [
+          "free"
         ],
         "none": [
+          "0 B total",
           "\"drive\"",
           "volumeName",
           "\\{"

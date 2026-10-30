@@ -23,6 +23,7 @@ export function toolLabel(tool: string): string {
     .replace(/^(get|run|do)(?=[A-Z])/, '')
     .replace(/[_-]+/g, ' ')
     .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z])([A-Z][a-z])/g, '$1 $2')
     .trim()
     .toLowerCase();
   return words.charAt(0).toUpperCase() + words.slice(1);

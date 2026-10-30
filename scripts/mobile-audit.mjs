@@ -50,7 +50,12 @@ await s('Network.setUserAgentOverride', {
   userAgent: 'Mozilla/5.0 (Linux; Android 16; I2302) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Mobile Safari/537.36',
 });
 await s('Page.navigate', { url });
-await sleep(4000);
+// Wait until the app has rendered (the dev server can take several seconds after a CSS change).
+for (let i = 0; i < 60; i++) {
+  await sleep(1000);
+  const r = await s('Runtime.evaluate', { expression: "document.querySelectorAll('#root button').length", returnByValue: true });
+  if ((r.result?.result?.value || 0) > 0) break;
+}
 
 async function evaluate(expression) {
   const r = await s('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true });
@@ -65,7 +70,7 @@ const MEASURE = `(() => {
   const targets = Array.from(document.querySelectorAll('button, a[href], [role="button"], [role="tab"], input, select, textarea'))
     .filter(visible)
     .map((el) => { const r = el.getBoundingClientRect(); return { label: label(el), w: Math.round(r.width), h: Math.round(r.height) }; })
-    .filter((t) => t.w < 44 || t.h < 44);
+    .filter((t) => (t.w < 44 || t.h < 44) && !(t.w <= 1 && t.h <= 1));
   const overflowing = Array.from(document.querySelectorAll('body *')).filter((el) => visible(el) && el.getBoundingClientRect().right > vw + 1)
     .slice(0, 8).map((el) => (el.className && el.className.toString ? el.className.toString().slice(0, 60) : el.tagName));
   const smallText = new Set();

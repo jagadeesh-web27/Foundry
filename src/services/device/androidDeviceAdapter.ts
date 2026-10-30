@@ -20,6 +20,21 @@ import {
 } from '@/services/native/computerService';
 
 /** Device adapter for the native Tauri Android runtime. */
+/**
+ * Android exposes dozens of mounts (read-only system images, APEX modules, FUSE views, per-app bind
+ * mounts). The storage a person means by "how much space do I have" is the shared user-data volume,
+ * mounted at /storage/emulated (backed by /data). Report that single volume.
+ */
+export function pickAndroidUserStorage(disks: DiskInfo[]): DiskInfo | null {
+  const usable = disks.filter((d) => d.totalBytes > 0);
+  const chosen =
+    usable.find((d) => d.drive === '/storage/emulated') ||
+    usable.find((d) => d.drive === '/data') ||
+    usable.filter((d) => !/^\/(apex|bootstrap-apex|system|vendor|product|odm|oem|dev|config|mnt)\b/.test(d.drive) && d.drive !== '/')
+      .sort((a, b) => b.totalBytes - a.totalBytes)[0];
+  return chosen ? { ...chosen, drive: 'Phone storage' } : null;
+}
+
 export class AndroidDeviceAdapter implements DeviceInterface {
   public platform = 'android' as const;
 
@@ -98,16 +113,8 @@ export class AndroidDeviceAdapter implements DeviceInterface {
     },
 
     getDiskInformation: async (): Promise<DiskInfo[]> => {
-      const allDisks = await computerService.getDiskInformation();
-      const userDisks = allDisks.filter(
-        (d) =>
-          !d.drive.startsWith('/apex') &&
-          !d.drive.startsWith('/bootstrap-apex') &&
-          !d.drive.startsWith('/dev') &&
-          !d.drive.startsWith('/config') &&
-          (d.drive.includes('emulated') || d.drive === '/data' || d.totalBytes > 1024 * 1024 * 1024)
-      );
-      return userDisks.length > 0 ? userDisks : allDisks.slice(0, 2);
+      const storage = pickAndroidUserStorage(await computerService.getDiskInformation());
+      return storage ? [storage] : [];
     },
 
     getBatteryInformation: async (): Promise<BatteryInfo> => {

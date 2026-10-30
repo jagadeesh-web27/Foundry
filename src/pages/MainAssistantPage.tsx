@@ -422,7 +422,7 @@ export const MainAssistantPage: React.FC = () => {
                             <button
                               type="button"
                               onClick={() => handleSpeakText(turn.id, turn.content)}
-                              className="p-1 rounded hover:bg-[var(--bg-tertiary)] text-[var(--text-muted)] hover:text-[var(--text-main)] transition-colors cursor-pointer"
+                              className="touch-target sm:p-1 rounded hover:bg-[var(--bg-tertiary)] text-[var(--text-muted)] hover:text-[var(--text-main)] transition-colors cursor-pointer"
                               title={speakingTurnId === turn.id ? 'Stop Speaking' : 'Read Out Loud'}
                               aria-label={speakingTurnId === turn.id ? 'Stop Speaking' : 'Read Out Loud'}
                             >
@@ -435,7 +435,7 @@ export const MainAssistantPage: React.FC = () => {
                             <button
                               type="button"
                               onClick={() => handleQuery(turns[turns.indexOf(turn) - 1]?.content || '')}
-                              className="p-1 rounded hover:bg-[var(--bg-tertiary)] text-[var(--text-muted)] hover:text-[var(--text-main)] transition-colors cursor-pointer"
+                              className="touch-target sm:p-1 rounded hover:bg-[var(--bg-tertiary)] text-[var(--text-muted)] hover:text-[var(--text-main)] transition-colors cursor-pointer"
                               title="Run Again"
                               aria-label="Rerun previous query"
                             >
