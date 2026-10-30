@@ -308,6 +308,10 @@ mod tests {
         }
         let pdfs = search_files_live(None, None, None, None, None, Some("pdf".to_string()), None, Some(10000), None, None, None);
         println!("pdf count -> {}", pdfs.len());
+        for q in ["whatapp", "watsapp", "whatsapp", "chorme", "calcualtor", "notpad", "teams", "spotfy"] {
+            let r = resolve_installed_application(q.to_string()).unwrap();
+            println!("app '{}' -> found={} {} {:?}", q, r.found, r.app_name, r.target_path);
+        }
     }
 
     #[test]
