@@ -1,0 +1,7 @@
+[build]
+jobs = 1
+incremental = false
+
+[target.aarch64-linux-android]
+linker = "C:/Users/jagadeesh/AppData/Local/Android/Sdk/ndk/29.0.13846066/toolchains/llvm/prebuilt/windows-x86_64/bin/aarch64-linux-android21-clang.cmd"
+ar = "C:/Users/jagadeesh/AppData/Local/Android/Sdk/ndk/29.0.13846066/toolchains/llvm/prebuilt/windows-x86_64/bin/llvm-ar.exe"

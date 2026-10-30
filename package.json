@@ -1,0 +1,50 @@
+{
+  "name": "foundry",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "oxlint",
+    "preview": "vite preview",
+    "test": "vitest run src/test",
+    "tauri": "tauri",
+    "android:dev": "tauri android dev",
+    "android:build": "node scripts/build-android.mjs",
+    "android:build:quiet": "tauri android build -t aarch64 --apk --debug && node scripts/sync-android-apk.mjs",
+    "android:wireless": "node scripts/android-wireless.mjs",
+    "android:install": "node scripts/android-device.mjs --install",
+    "android:launch": "node scripts/android-device.mjs --launch",
+    "android:restart": "node scripts/android-device.mjs --restart",
+    "android:logcat": "node scripts/android-device.mjs --logcat",
+    "android:dev:usb": "npm run android:build && npm run android:install",
+    "android:device-check": "vitest run tests/android/android-device-check.test.ts",
+    "android:e2e": "vitest run tests/android/android-physical-device.test.ts",
+    "android:e2e:files": "vitest run tests/android/android-physical-device.test.ts -t Files",
+    "android:e2e:metadata": "vitest run tests/android/android-physical-device.test.ts -t Metadata"
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@tauri-apps/api": "^2.11.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.47.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-router-dom": "^7.18.4",
+    "tailwind-merge": "^3.7.0",
+    "tailwindcss": "^4.3.3"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.11.5",
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^6.1.1",
+    "fake-indexeddb": "^6.2.5",
+    "oxlint": "^1.81.0",
+    "typescript": "~6.0.2",
+    "vite": "^8.3.0",
+    "vitest": "^5.0.1"
+  }
+}

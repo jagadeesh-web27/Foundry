@@ -1,0 +1,57 @@
+import React from 'react';
+import { Database, Cpu, WifiOff, ShieldCheck } from 'lucide-react';
+import { useApp } from '@/stores/AppContext';
+
+export const StatusBar: React.FC = () => {
+  const { aiStatus, stats } = useApp();
+
+  return (
+    <footer
+      className="h-7 border-t border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-4 flex items-center justify-between text-[11px] text-[var(--text-faint)] select-none"
+      role="contentinfo"
+      aria-label="Application Status"
+    >
+      <div className="flex items-center space-x-4">
+        {/* Local Storage Engine */}
+        <div className="flex items-center space-x-1.5" title="All data stored strictly on this device">
+          <Database className="w-3 h-3 text-blue-500" />
+          <span>Local Engine: SQLite/IDB Ready</span>
+        </div>
+
+        {/* Accessible files status */}
+        <div className="flex items-center space-x-1.5">
+          <span>{stats.totalIndexedFiles.toLocaleString()} files indexed</span>
+        </div>
+
+        {/* Offline first indicator */}
+        <div className="flex items-center space-x-1.5" title="Core functionality operates 100% offline">
+          <WifiOff className="w-3 h-3 text-[var(--text-faint)]" />
+          <span>Offline First</span>
+        </div>
+      </div>
+
+      <div className="flex items-center space-x-4">
+        {/* AI Provider Status */}
+        <div className="flex items-center space-x-1.5" title={aiStatus.isAvailable ? `Connected to ${aiStatus.providerType} (${aiStatus.modelName})` : 'AI Provider Offline'}>
+          <Cpu className="w-3 h-3" />
+          <span
+            className={`w-1.5 h-1.5 rounded-full ${
+              aiStatus.isAvailable ? 'bg-emerald-500' : 'bg-amber-500'
+            }`}
+          />
+          <span>
+            {aiStatus.isAvailable
+              ? `AI: ${aiStatus.providerType} (${aiStatus.latencyMs ?? 0}ms)`
+              : 'AI: Offline (Check Settings)'}
+          </span>
+        </div>
+
+        {/* Local-First Guarantee */}
+        <div className="flex items-center space-x-1 text-emerald-500 font-medium">
+          <ShieldCheck className="w-3 h-3" />
+          <span>Zero Cloud Telemetry</span>
+        </div>
+      </div>
+    </footer>
+  );
+};

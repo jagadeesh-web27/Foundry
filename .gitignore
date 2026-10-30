@@ -1,0 +1,42 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# --- Foundry: large binaries, local state and secrets (never commit) ---
+.env
+.android-device.json
+.claude/settings.local.json
+# AI models and bundled native runtimes (fetched/installed separately; see docs)
+/models/
+*.task
+*.gguf
+src-tauri/llama-runtime/
+src-tauri/whisper-runtime/
+# Build outputs and device artifacts
+*.apk
+/artifacts/
+src-tauri/gen/android/app/src/main/jniLibs/
+android-build.log
+android-cargo-tree*.txt
+test-screen.png
