@@ -177,11 +177,19 @@ function plural(n: number, singular: string): string {
 }
 
 function formatDisk(disks: any): string {
-  const list = Array.isArray(disks) ? disks : [];
+  const all = Array.isArray(disks) ? disks : [];
+  // Android reports the same partition under several mount points; show each volume once.
+  const seen = new Set<string>();
+  const list = all.filter((d: any) => {
+    const key = `${d.totalBytes}:${d.freeBytes}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
   if (list.length === 0) return "I couldn't read the disk information.";
   const rows = list.map(
     (d: any) =>
-      `- **${d.drive}** ${d.totalFormatted} total, ${d.freeFormatted} free (${Math.round(d.percentageUsed)}% used)`,
+      `- **${String(d.drive).startsWith('/') ? 'Phone storage' : d.drive}** ${d.totalFormatted} total, ${d.freeFormatted} free (${Math.round(d.percentageUsed)}% used)`,
   );
   return `Here is your storage:\n${rows.join('\n')}`;
 }

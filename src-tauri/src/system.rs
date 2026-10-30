@@ -23,7 +23,7 @@ pub struct BatteryInfo {
     pub temperature_celsius: Option<f64>,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_battery_information() -> Result<BatteryInfo, String> {
     #[cfg(target_os = "android")]
     {
@@ -137,7 +137,7 @@ pub fn format_bytes(bytes: u64) -> String {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_disk_information() -> Result<Vec<DiskInfo>, String> {
     use sysinfo::Disks;
     let disks = Disks::new_with_refreshed_list();
@@ -172,7 +172,7 @@ pub fn get_disk_information() -> Result<Vec<DiskInfo>, String> {
     Ok(result)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_system_info() -> Result<SystemHardwareInfo, String> {
     use sysinfo::System;
     let mut sys = System::new();
@@ -226,7 +226,7 @@ pub fn get_system_info() -> Result<SystemHardwareInfo, String> {
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_top_processes(limit: Option<usize>) -> Result<Vec<ProcessMetrics>, String> {
     use sysinfo::System;
     let mut sys = System::new();
@@ -279,7 +279,7 @@ pub struct NetworkInfo {
     pub interfaces: Vec<NetworkInterfaceInfo>,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_network_information() -> Result<NetworkInfo, String> {
     use sysinfo::Networks;
     let networks = Networks::new_with_refreshed_list();
@@ -393,11 +393,18 @@ pub async fn proxy_http_request(
     body: Option<String>,
     timeout_ms: Option<u64>,
 ) -> Result<HttpProxyResponse, String> {
+    // Only the local machine (local AI engines) and the cloud APIs Foundry's connectors use.
+    crate::access_policy::check_proxy_url(&url)?;
+    // Responses are returned whole to the webview, so cap their size.
+    const MAX_RESPONSE_BYTES: usize = 32 * 1024 * 1024;
+
     static HTTP_CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
     let client = HTTP_CLIENT.get_or_init(|| {
         reqwest::Client::builder()
             .connect_timeout(std::time::Duration::from_millis(3000))
             .timeout(std::time::Duration::from_secs(60))
+            // A redirect could leave the allow-list, so redirects are returned to the caller, not followed.
+            .redirect(reqwest::redirect::Policy::none())
             .build()
             .unwrap_or_else(|_| reqwest::Client::new())
     });
@@ -427,7 +434,7 @@ pub async fn proxy_http_request(
         request = request.body(body_str);
     }
 
-    let response = request
+    let mut response = request
         .send()
         .await
         .map_err(|e| format!("HTTP request to {} failed: {}", url, e))?;
@@ -440,10 +447,18 @@ pub async fn proxy_http_request(
         }
     }
 
-    let body_text = response
-        .text()
+    let mut body_bytes: Vec<u8> = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
         .await
-        .map_err(|e| format!("Failed to read response body: {}", e))?;
+        .map_err(|e| format!("Failed to read response body: {}", e))?
+    {
+        if body_bytes.len() + chunk.len() > MAX_RESPONSE_BYTES {
+            return Err(format!("Response from {} exceeded the {} MB limit.", url, MAX_RESPONSE_BYTES / (1024 * 1024)));
+        }
+        body_bytes.extend_from_slice(&chunk);
+    }
+    let body_text = String::from_utf8_lossy(&body_bytes).to_string();
 
     Ok(HttpProxyResponse {
         status,

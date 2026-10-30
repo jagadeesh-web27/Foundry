@@ -5,6 +5,7 @@
  */
 
 import { computerService } from '@/services/native/computerService';
+import { guardTool } from '@/services/permissions/permissionManager';
 
 export type ToolCategory =
   | 'filesystem'
@@ -48,7 +49,8 @@ export class ToolRegistry {
    * Register a new tool in the central registry
    */
   public registerTool(tool: FoundryTool): void {
-    this.tools.set(tool.name, tool);
+    // Enforce the user's permission settings on every execution, whichever code path calls the tool.
+    this.tools.set(tool.name, { ...tool, execute: guardTool(tool.name, tool.execute.bind(tool)) });
   }
 
   /**

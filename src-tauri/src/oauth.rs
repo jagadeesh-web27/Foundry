@@ -183,49 +183,12 @@ pub async fn wait_for_oauth_callback(
 /// Uses Windows ShellExecuteW directly so ampersands (&), query params, and scopes are NEVER chopped off by cmd.exe.
 #[tauri::command]
 pub fn open_browser_url(url: String) -> Result<(), String> {
+    // Only plain web links: refuse file:, javascript:, ms-settings: and other handlers that could run code.
+    crate::access_policy::check_browser_url(&url)?;
     #[cfg(target_os = "windows")]
     {
-        use std::ffi::OsStr;
-        use std::os::windows::ffi::OsStrExt;
-
-        let wide_url: Vec<u16> = OsStr::new(&url)
-            .encode_wide()
-            .chain(std::iter::once(0))
-            .collect();
-        let wide_op: Vec<u16> = OsStr::new("open")
-            .encode_wide()
-            .chain(std::iter::once(0))
-            .collect();
-
-        #[link(name = "shell32")]
-        extern "system" {
-            fn ShellExecuteW(
-                hwnd: *mut std::ffi::c_void,
-                lp_operation: *const u16,
-                lp_file: *const u16,
-                lp_parameters: *const u16,
-                lp_directory: *const u16,
-                n_show_cmd: i32,
-            ) -> isize;
-        }
-
-        let res = unsafe {
-            ShellExecuteW(
-                std::ptr::null_mut(),
-                wide_op.as_ptr(),
-                wide_url.as_ptr(),
-                std::ptr::null(),
-                std::ptr::null(),
-                1, // SW_SHOWNORMAL
-            )
-        };
-
-        if res <= 32 {
-            return Err(format!(
-                "ShellExecuteW failed to open browser with error code: {}",
-                res
-            ));
-        }
+        // ShellExecuteW directly, so ampersands and query strings are never mangled by cmd.exe.
+        crate::access_policy::shell_open(&url)?;
     }
     #[cfg(target_os = "macos")]
     {

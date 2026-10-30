@@ -36,43 +36,34 @@ pub fn check_whisper_health(port: u16) -> bool {
     false
 }
 
+/// Locate whisper-server and its model: next to the installed app first, then the dev source tree.
+/// (No machine-specific absolute paths: those only worked on the developer's laptop.)
 pub fn resolve_whisper_paths() -> Option<(PathBuf, PathBuf)> {
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let exe_candidates = [
-        manifest_dir.join("whisper-runtime").join("whisper-server.exe"),
-        PathBuf::from("whisper-runtime").join("whisper-server.exe"),
-        PathBuf::from("D:\\Foundry\\src-tauri\\whisper-runtime\\whisper-server.exe"),
-        PathBuf::from("D:\\Crack\\src-tauri\\whisper-runtime\\whisper-server.exe"),
-    ];
-
-    let mut found_exe = None;
-    for c in &exe_candidates {
-        if c.exists() {
-            found_exe = Some(c.clone());
-            break;
+    let exe_name = if cfg!(windows) { "whisper-server.exe" } else { "whisper-server" };
+    let mut runtime_dirs: Vec<PathBuf> = Vec::new();
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            runtime_dirs.push(dir.join("whisper-runtime"));
+            runtime_dirs.push(dir.join("resources").join("whisper-runtime"));
         }
     }
+    runtime_dirs.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("whisper-runtime"));
+    runtime_dirs.push(PathBuf::from("whisper-runtime"));
 
-    let exe = found_exe?;
-    let parent = exe.parent().unwrap_or(&manifest_dir);
+    runtime_dirs.into_iter().find_map(|dir| {
+        let exe = dir.join(exe_name);
+        let model = dir.join("ggml-base.en.bin");
+        (exe.exists() && model.exists()).then_some((exe, model))
+    })
+}
 
-    let model_candidates = [
-        parent.join("ggml-base.en.bin"),
-        manifest_dir.join("whisper-runtime").join("ggml-base.en.bin"),
-        PathBuf::from("D:\\Foundry\\src-tauri\\whisper-runtime\\ggml-base.en.bin"),
-        PathBuf::from("D:\\Crack\\src-tauri\\whisper-runtime\\ggml-base.en.bin"),
-    ];
-
-    let mut found_model = None;
-    for m in &model_candidates {
-        if m.exists() {
-            found_model = Some(m.clone());
-            break;
+/// Stop the whisper-server child process (called when Foundry exits).
+pub fn stop_server() {
+    if let Ok(mut guard) = WHISPER_CHILD.lock() {
+        if let Some(mut child) = guard.take() {
+            let _ = child.kill();
         }
     }
-
-    let model = found_model?;
-    Some((exe, model))
 }
 
 pub fn ensure_whisper_server_running() -> Result<u16, String> {

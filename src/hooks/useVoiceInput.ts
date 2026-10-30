@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { audioRecorder } from '@/services/voice/audioRecorder';
 import { computerService } from '@/services/native/computerService';
+import { trace } from '@/services/debug/trace';
 
 interface IWindow extends Window {
   SpeechRecognition?: any;
@@ -141,7 +142,7 @@ export function useVoiceInput(onResult?: (text: string) => void, onInterim?: (te
         console.log(`[Foundry Voice] Encoded WAV buffer: ${wavBytes.length} bytes. Transcribing via Whisper...`);
 
         const text = await computerService.transcribeAudio(wavBytes);
-        console.log('[Foundry Voice] Whisper transcribed text:', text);
+        trace('[Foundry Voice] Whisper transcribed text:', text);
 
         if (text && text.trim()) {
           const cleaned = text.trim();

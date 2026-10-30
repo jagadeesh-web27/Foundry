@@ -83,18 +83,9 @@ export const ImportsPage: React.FC = () => {
         // Extract raw text
         let content = '';
         if (job.fileType === 'pdf' || job.fileType === 'docx') {
-          // For binary PDF/DOCX, extract text representations
-          const buffer = await file.arrayBuffer();
-          const textDecoder = new TextDecoder('utf-8', { fatal: false });
-          const raw = textDecoder.decode(buffer);
-          // Clean non-printable characters for standard extraction
-          content = raw.split('').filter((ch) => {
-            const code = ch.charCodeAt(0);
-            return code >= 32 || code === 10 || code === 13 || code === 9;
-          }).join('').trim();
-          if (!content || content.length < 50) {
-            content = `Extracted document content from ${file.name}.\nSize: ${(file.size / 1024).toFixed(1)} KB.`;
-          }
+          // PDF/DOCX are compressed binary formats; decoding their bytes as UTF-8 produced garbage and a
+          // placeholder string was indexed as if it were the document. Refuse until real extraction exists.
+          throw new Error(`Text extraction for ${job.fileType.toUpperCase()} files is not available yet, so ${file.name} was not imported.`);
         } else {
           content = await file.text();
         }

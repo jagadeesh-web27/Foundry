@@ -50,7 +50,7 @@ pub fn check_if_process_running(proc_query: &str) -> bool {
     false
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_running_applications() -> Result<Vec<RunningApp>, String> {
     use sysinfo::System;
     let mut sys = System::new();
@@ -310,7 +310,18 @@ pub fn score_application_match(app: &DiscoveredApplication, query: &str) -> i32 
         if lower_display.contains(token) || lower_name.contains(token) || lower_id.contains(token) {
             score += 30;
             matched_tokens += 1;
+        } else if crate::fuzzy::matches_any_token(token, &lower_display) || crate::fuzzy::matches_any_token(token, &lower_name) {
+            // Misspelled app name ("whatapp", "chorme"): weaker than an exact hit, so exact matches win.
+            score += 25;
+            matched_tokens += 1;
         }
+    }
+
+    // Whole-name typo with spacing differences ("whats app" / "whatapp" vs "WhatsApp").
+    let compact_query: String = clean_query.chars().filter(|c| c.is_alphanumeric()).collect();
+    let compact_display: String = lower_display.chars().filter(|c| c.is_alphanumeric()).collect();
+    if score == 0 && compact_query.len() >= 4 && crate::fuzzy::words_match(&compact_query, &compact_display) {
+        score += 90;
     }
 
     if matched_tokens == q_tokens.len() {
@@ -381,12 +392,12 @@ pub fn check_app_is_running(app: &DiscoveredApplication) -> bool {
     check_if_process_running(&app.name)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn discover_installed_applications() -> Result<Vec<DiscoveredApplication>, String> {
     Ok(discover_installed_applications_internal())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_application_details(application: String) -> Result<ApplicationDetails, String> {
     let apps = discover_installed_applications_internal();
     let mut scored: Vec<(i32, DiscoveredApplication)> = apps
@@ -504,7 +515,7 @@ pub fn get_application_details(application: String) -> Result<ApplicationDetails
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn resolve_installed_application(query: String) -> Result<ResolvedApplication, String> {
     println!("[FOUNDry] Application request:\n{}", query);
     println!("[FOUNDry] Searching installed applications...");
@@ -534,6 +545,8 @@ pub fn resolve_installed_application(query: String) -> Result<ResolvedApplicatio
         } else {
             best_app.launch_identifier.clone()
         };
+        // Only targets resolved here from the installed-application list may be launched later.
+        crate::access_policy::register_launch_target(&launch_target);
 
         return Ok(ResolvedApplication {
             found: true,
@@ -555,6 +568,14 @@ pub fn resolve_installed_application(query: String) -> Result<ResolvedApplicatio
 #[tauri::command]
 pub fn launch_application_target(target_path: String) -> Result<bool, String> {
     println!("[FOUNDry] Launch method executing for target: {}", target_path);
+
+    let is_builtin = ["notepad.exe", "calc.exe", "explorer.exe", "mspaint.exe", "taskmgr.exe", "msedge.exe"]
+        .iter()
+        .any(|&exe| target_path.eq_ignore_ascii_case(exe));
+    // The webview may not launch arbitrary programs: the target must come from the installed-app resolver.
+    if !is_builtin && !crate::access_policy::is_registered_launch_target(&target_path) {
+        return Err("This application was not found among installed applications, so Foundry will not launch it.".to_string());
+    }
 
     if target_path.starts_with("shell:AppsFolder\\") {
         #[cfg(target_os = "windows")]

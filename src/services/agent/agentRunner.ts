@@ -44,11 +44,13 @@ export class AgentRunner {
     aiService?: AIService,
     isAiAvailable: boolean = false
   ): Promise<AgentResponse> {
-    // Clear device / file questions on the desktop app are answered by rules and the real tools:
-    // instant, and independent of how well the on-device model follows tool-call formats.
+    // Clear device / file questions in the native app (desktop and Android) are answered by rules and the
+    // real tools: instant, and independent of how well the on-device model follows tool-call formats.
     const isAndroidUA = typeof navigator !== 'undefined' && /android/i.test(navigator.userAgent);
-    if (computerService.isTauriEnvironment() && !isAndroidUA && !looksLikeGeneralKnowledge(normalizeInput(userInput))) {
-      const route = routeQuery(userInput);
+    if (computerService.isTauriEnvironment() && !looksLikeGeneralKnowledge(normalizeInput(userInput))) {
+      const routed = routeQuery(userInput);
+      // Launching installed applications is only implemented on Windows.
+      const route = routed && !(isAndroidUA && routed.kind === 'open_app') ? routed : null;
       if (route) {
         let aiReady = isAiAvailable;
         if (route.kind === 'read' && aiService && !aiReady) {

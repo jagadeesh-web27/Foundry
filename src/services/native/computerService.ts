@@ -1,4 +1,5 @@
 import { IndexedFile, IndexedFolder, UserDirectoryAccess, ComputerFileType } from '@/types/file';
+import { trace } from '@/services/debug/trace';
 
 /** Strip undefined values from args to prevent Tauri serialization issues */
 function cleanArgs(args?: Record<string, unknown>): Record<string, unknown> | undefined {
@@ -16,16 +17,16 @@ async function invokeTauri<T>(cmd: string, args?: Record<string, unknown>): Prom
   try {
     const isTauri = typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window);
     if (!isTauri) {
-      console.log(`[Foundry] invokeTauri: NOT in Tauri environment, skipping ${cmd}`);
+      trace(`[Foundry] invokeTauri: NOT in Tauri environment, skipping ${cmd}`);
       return null;
     }
 
     const cleaned = cleanArgs(args);
-    console.log(`[Foundry] invokeTauri: calling ${cmd} with args:`, JSON.stringify(cleaned));
+    trace(`[Foundry] invokeTauri: calling ${cmd} with args:`, JSON.stringify(cleaned));
 
     const { invoke } = await import('@tauri-apps/api/core');
     const result = await invoke<T>(cmd, cleaned);
-    console.log(`[Foundry] invokeTauri: ${cmd} returned`, Array.isArray(result) ? `${(result as unknown[]).length} items` : result);
+    trace(`[Foundry] invokeTauri: ${cmd} returned`, Array.isArray(result) ? `${(result as unknown[]).length} items` : result);
     return result;
   } catch (err) {
     console.error(`[Foundry] invokeTauri ERROR: ${cmd} failed:`, err);
@@ -87,7 +88,7 @@ export class ComputerService {
     nameQuery?: string;
     limit?: number;
   }): Promise<IndexedFolder[]> {
-    console.log('[Foundry] searchFoldersLive called with args:', JSON.stringify(args));
+    trace('[Foundry] searchFoldersLive called with args:', JSON.stringify(args));
 
     // Build clean args object - only include defined values
     const tauriArgs: Record<string, unknown> = {};
@@ -139,7 +140,7 @@ export class ComputerService {
     sortBy?: string;
     sortOrder?: string;
   }): Promise<IndexedFile[]> {
-    console.log('[Foundry] searchFilesLive called with args:', JSON.stringify(args));
+    trace('[Foundry] searchFilesLive called with args:', JSON.stringify(args));
 
     // Build clean args object
     const tauriArgs: Record<string, unknown> = {};

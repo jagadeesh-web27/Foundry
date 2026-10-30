@@ -6,6 +6,7 @@ import { PendingAction } from '@/services/agent/dynamicAgent';
 import { db, StoredConversation, StoredMessage } from '@/services/db/database';
 import { AIService } from '@/services/ai/aiService';
 import { AIProviderStatus } from '@/types/ai';
+import { trace } from '@/services/debug/trace';
 
 export interface ConversationTurn {
   id: string;
@@ -248,7 +249,7 @@ export function useAssistantChat({
       setTurns(newTurnsWithUser);
       setIsProcessing(true);
 
-      console.log('[PIPELINE_TRACE] USER QUERY (UI):', q);
+      trace('[PIPELINE_TRACE] USER QUERY (UI):', q);
 
       try {
         const agentResponse = await agentRunner.run(
@@ -263,7 +264,7 @@ export function useAssistantChat({
           aiStatus.isAvailable
         );
 
-        console.log('[PIPELINE_TRACE] CHAT UI (Received Final Assistant Response):', agentResponse.message);
+        trace('[PIPELINE_TRACE] CHAT UI (Received Final Assistant Response):', agentResponse.message);
 
         const assistantTurn: ConversationTurn = {
           id: `asst_${Date.now()}`,

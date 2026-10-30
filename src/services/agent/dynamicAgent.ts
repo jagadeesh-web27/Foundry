@@ -6,6 +6,7 @@ import { permissionManager } from '@/services/permissions/permissionManager';
 import { toolRegistry } from '@/services/tools/toolRegistry';
 import { deviceService } from '@/services/device/deviceService';
 import { computerService } from '@/services/native/computerService';
+import { trace } from '@/services/debug/trace';
 
 export interface ToolCall {
   name: string;
@@ -326,8 +327,8 @@ GUIDELINES:
     userInput: string,
     context: AgentContext
   ): Promise<DynamicAgentResult> {
-    console.log('[PIPELINE_TRACE] USER QUERY (Agent Entry):', userInput);
-    console.log('[PIPELINE_TRACE] AGENT INPUT:', JSON.stringify({ userInput }));
+    trace('[PIPELINE_TRACE] USER QUERY (Agent Entry):', userInput);
+    trace('[PIPELINE_TRACE] AGENT INPUT:', JSON.stringify({ userInput }));
     const executedTools: string[] = [];
     const discoveredFiles: IndexedFile[] = [];
     const discoveredFolders: IndexedFolder[] = [];
@@ -356,7 +357,7 @@ GUIDELINES:
       const isoDate = now.toISOString().slice(0, 10);
 
       const intent = this.classifyIntent(userInput);
-      console.log('[PIPELINE_TRACE] CLASSIFIED INTENT:', intent);
+      trace('[PIPELINE_TRACE] CLASSIFIED INTENT:', intent);
 
       let systemPrompt: string;
       if (intent === 'general') {
@@ -384,10 +385,14 @@ ${this.getToolsDescription(intent)}
         },
       ];
 
-      while (toolCallCount < this.maxToolCalls) {
-        console.log(`[PIPELINE_TRACE] MODEL REQUEST (Iteration ${toolCallCount}):`, JSON.stringify(messages));
+      // Bound model round-trips as well as executed tools: a tool that keeps throwing never increments
+      // toolCallCount, which previously let the loop call the model forever.
+      let modelRounds = 0;
+      const maxModelRounds = this.maxToolCalls * 2;
+      while (toolCallCount < this.maxToolCalls && modelRounds++ < maxModelRounds) {
+        trace(`[PIPELINE_TRACE] MODEL REQUEST (Iteration ${toolCallCount}):`, JSON.stringify(messages));
         const aiResponse = await this.aiService.getProvider().chat(messages);
-        console.log(`[PIPELINE_TRACE] MODEL RESPONSE (Iteration ${toolCallCount}):`, aiResponse);
+        trace(`[PIPELINE_TRACE] MODEL RESPONSE (Iteration ${toolCallCount}):`, aiResponse);
 
         if (!aiResponse || !aiResponse.trim()) {
           break;
@@ -405,7 +410,7 @@ ${this.getToolsDescription(intent)}
           const count = lastCountResult ? lastCountResult.count : 0;
           const ext = lastCountResult?.extension ? `${lastCountResult.extension.toUpperCase()} ` : '';
           const finalMsg = `You have ${count} ${ext}files on your device.`;
-          console.log('[PIPELINE_TRACE] FINAL AGENT ANSWER (Count Loop Intercept):', finalMsg);
+          trace('[PIPELINE_TRACE] FINAL AGENT ANSWER (Count Loop Intercept):', finalMsg);
           return {
             message: finalMsg,
             toolsExecuted: executedTools,
@@ -417,10 +422,10 @@ ${this.getToolsDescription(intent)}
         if (toolCalls.length > 0) {
           try {
             for (const toolCall of toolCalls) {
-              console.log('[PIPELINE_TRACE] TOOL CALL:', toolCall.name);
-              console.log('[PIPELINE_TRACE] TOOL ARGUMENTS:', JSON.stringify(toolCall.arguments));
+              trace('[PIPELINE_TRACE] TOOL CALL:', toolCall.name);
+              trace('[PIPELINE_TRACE] TOOL ARGUMENTS:', JSON.stringify(toolCall.arguments));
               const toolResult = await this.executeTool(toolCall, context, userInput);
-              console.log('[PIPELINE_TRACE] TOOL RESULT:', JSON.stringify({
+              trace('[PIPELINE_TRACE] TOOL RESULT:', JSON.stringify({
                 tool: toolCall.name,
                 hasData: toolResult.result !== undefined,
                 isArray: Array.isArray(toolResult.result),
@@ -562,7 +567,7 @@ ${this.getToolsDescription(intent)}
                 role: 'user',
                 content: nextUserPrompt,
               });
-              console.log('[PIPELINE_TRACE] MODEL FOLLOW-UP INPUT:', nextUserPrompt);
+              trace('[PIPELINE_TRACE] MODEL FOLLOW-UP INPUT:', nextUserPrompt);
             }
 
             continue;
@@ -621,7 +626,7 @@ ${this.getToolsDescription(intent)}
             cleanMessage = `You have ${lastCountResult.count} ${type}files on your device.`;
           }
 
-          console.log('[PIPELINE_TRACE] FINAL AGENT ANSWER:', cleanMessage);
+          trace('[PIPELINE_TRACE] FINAL AGENT ANSWER:', cleanMessage);
 
           return {
             message: cleanMessage,
@@ -651,7 +656,7 @@ ${this.getToolsDescription(intent)}
             clean = `You have ${lastCountResult.count} ${type}files on your device.`;
           }
           if (clean) {
-            console.log('[PIPELINE_TRACE] FINAL AGENT ANSWER (Max Calls Follow-up):', clean);
+            trace('[PIPELINE_TRACE] FINAL AGENT ANSWER (Max Calls Follow-up):', clean);
             return {
               message: clean,
               toolsExecuted: executedTools,

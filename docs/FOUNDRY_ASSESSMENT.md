@@ -201,7 +201,31 @@ The order matters. Phase 0 is required before handing the app to anyone. Phases 
 
 ---
 
-## 8. Decisions needed from the product owner
+## 7a. Progress log
+
+### Baseline: old Android app (1 Oct build) on the physical phone, 30 Oct
+Suite: `tests/e2e/phone-suite.json`. Report: `artifacts/e2e/phone-baseline-oldapp.txt`.
+- **Score:** 9 of 11 checks passed, with the checks as they stood at the time. The passes overstate the quality:
+  - "How much storage is left?" returned a raw JSON dump reporting 0 B free, after 72 s.
+  - "Find my aadhaar card" claimed it had "located files containing an Aadhaar card". No such file exists, so this was a fabricated result.
+  - "give me my resme" was refused as a request for a "residency number".
+  - File questions took about 25 s each; general questions took 4–25 s.
+
+### Phase 0: safety and honesty (in progress)
+| Item | Status |
+|---|---|
+| git repo, `.gitignore` for models/runtimes/APKs; pushed to github.com/jagadeesh-web27/Foundry (office Wi-Fi name scrubbed from history first) | Done |
+| Fabricated `readFile` content removed; PDF/DOCX import refuses instead of indexing placeholder text | Done + unit-tested |
+| Single permission gateway for every tool (computerTools + toolRegistry) | Done + unit-tested |
+| `access_policy.rs`: file access limited to the accessible folders (canonicalized; hidden/system folders and key files refused); `open_file` never executes programs and uses no shell; browser links limited to http/https; proxy limited to loopback + listed APIs, with no redirects and a 32 MB cap; app launch only for resolver-registered targets | Done + 7 Rust tests |
+| Content security policy | Configured; release-build verification pending |
+| Agent loop bounded (model rounds capped) | Done |
+| Whisper: no hard-coded `D:\` paths, stopped on exit | Done |
+| User-data console logs only in dev builds (`services/debug/trace.ts`) | Done |
+| Heavy commands (disk walks, reads, PowerShell, netsh) off the UI thread | Done (`#[tauri::command(async)]`) |
+| End-to-end harness `scripts/e2e-chat.mjs` + desktop and phone suites (see `docs/TESTING.md`) | Done |
+
+## 8. Decisions (recommendations accepted by the product owner on 30 Oct)
 
 1. **Index storage:** a SQLite index in the Rust backend (recommended — fast, durable, handles large drives) instead of growing IndexedDB in the webview.
 2. **Folders to index by default:** Documents, Downloads, Desktop and Pictures only, plus user-added folders (recommended), or whole drives. This sets privacy, indexing time and disk use.

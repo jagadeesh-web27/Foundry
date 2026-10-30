@@ -4,7 +4,7 @@
  * Respects OS boundaries, prevents arbitrary execution, and requires explicit user confirmation.
  */
 
-import { PermissionLevel } from '@/services/tools/toolRegistry';
+import type { PermissionLevel } from '@/services/tools/toolRegistry';
 
 export type DevicePermissionCategory =
   | 'filesystem'
@@ -221,6 +221,7 @@ export class PermissionManager {
       case 'searchFolders':
       case 'countFiles':
       case 'readFile':
+      case 'getFileMetadata':
       case 'openFile':
       case 'revealFile':
       case 'find_largest_file':
@@ -228,6 +229,7 @@ export class PermissionManager {
 
       case 'getDiskInformation':
       case 'getSystemInfo':
+      case 'getBatteryInformation':
       case 'diagnose_system_performance':
       case 'get_top_processes':
         return 'systemInfo';
@@ -349,3 +351,29 @@ export class PermissionManager {
 }
 
 export const permissionManager = new PermissionManager();
+
+/** Thrown when a tool is invoked for a capability the user has denied in Settings. */
+export class PermissionDeniedError extends Error {
+  constructor(
+    public readonly toolName: string,
+    public readonly category: DevicePermissionCategory,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'PermissionDeniedError';
+  }
+}
+
+/**
+ * Wrap a tool implementation so the user's permission settings are enforced no matter which code path
+ * (rule router, AI agent loop or offline fallback) invokes it.
+ */
+export function guardTool<A extends unknown[], R>(toolName: string, fn: (...args: A) => Promise<R>): (...args: A) => Promise<R> {
+  return async (...args: A): Promise<R> => {
+    const check = permissionManager.checkToolPermission(toolName);
+    if (!check.allowed) {
+      throw new PermissionDeniedError(toolName, check.category, check.reason || 'Permission denied by user.');
+    }
+    return fn(...args);
+  };
+}

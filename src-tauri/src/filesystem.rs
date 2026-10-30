@@ -128,7 +128,7 @@ pub fn should_ignore_entry(name: &str) -> bool {
         || name == "Android"
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_accessible_directories() -> Vec<UserDirectory> {
     let mut dirs = Vec::new();
     let mut seen = std::collections::HashSet::new();
@@ -268,7 +268,7 @@ pub fn get_accessible_directories() -> Vec<UserDirectory> {
 }
 
 /// Live real-time folder search directly over the computer's user directories
-#[tauri::command]
+#[tauri::command(async)]
 pub fn search_folders_live(
     created_after: Option<String>,
     created_before: Option<String>,
@@ -400,7 +400,7 @@ fn search_folders_recursive(
 }
 
 /// Live real-time file search directly over the computer's user directories
-#[tauri::command]
+#[tauri::command(async)]
 pub fn search_files_live(
     created_after: Option<String>,
     created_before: Option<String>,
@@ -620,11 +620,9 @@ pub fn query_matches(file_name: &str, file_path: &str, query: &str) -> bool {
     words.iter().all(|w| {
         let stem = if w.ends_with('s') && w.len() > 3 { &w[..w.len() - 1] } else { w.as_str() };
         let resume_word = w == "resume" || w == "resumes" || w == "cv";
-        // Common spellings of Aadhaar (people type "adhar", files are named "Aadhaar_Card.pdf").
-        let aadhaar_word = ["adhar", "adhaar", "aadhar", "aadhaar", "adhar", "aadhr"].contains(&w.as_str());
-        let aadhaar_hit = aadhaar_word
-            && ["adhar", "adhaar", "aadhar", "aadhaar", "adhaar", "aadhr"].iter().any(|v| lname.contains(v) || lpath.contains(v));
-        aadhaar_hit
+        // Misspellings and transliterations ("resme", "adhar" vs "Aadhaar_Card.pdf") via fuzzy token match.
+        let fuzzy_hit = w.chars().count() >= 4 && crate::fuzzy::matches_any_token(w, file_name);
+        fuzzy_hit
             || (resume_word && looks_like_resume(file_name))
             || lname.contains(w.as_str())
             || lname.contains(stem)
@@ -844,7 +842,7 @@ fn search_files_recursive(
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_folder_metadata(path: String) -> Result<DiscoveredFolder, String> {
     let p = PathBuf::from(&path);
     if !p.exists() || !p.is_dir() {
@@ -870,7 +868,7 @@ pub fn get_folder_metadata(path: String) -> Result<DiscoveredFolder, String> {
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_file_metadata(path: String) -> Result<DiscoveredFile, String> {
     #[cfg(target_os = "android")]
     if path.starts_with("content://") {
@@ -879,8 +877,8 @@ pub fn get_file_metadata(path: String) -> Result<DiscoveredFile, String> {
         return serde_json::from_str(&metadata).map_err(|error| format!("Invalid SAF metadata: {error}"));
     }
 
-    let p = PathBuf::from(&path);
-    if !p.exists() || !p.is_file() {
+    let p = crate::access_policy::permitted_path(&path)?;
+    if !p.is_file() {
         return Err("File does not exist".to_string());
     }
 
@@ -905,7 +903,7 @@ pub fn get_file_metadata(path: String) -> Result<DiscoveredFile, String> {
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn scan_user_directory(dir_path: String, max_files: usize) -> Vec<DiscoveredFile> {
     let mut files = Vec::new();
     let root = Path::new(&dir_path);
@@ -916,7 +914,7 @@ pub fn scan_user_directory(dir_path: String, max_files: usize) -> Vec<Discovered
     files
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn scan_user_folders(dir_path: String, max_folders: usize) -> Vec<DiscoveredFolder> {
     let mut folders = Vec::new();
     let root = Path::new(&dir_path);
@@ -1002,31 +1000,38 @@ pub fn extract_pdf_text(data: &[u8], max_bytes: usize) -> String {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn read_file_content(path: String, max_bytes: usize) -> Result<String, String> {
     #[cfg(target_os = "android")]
     if path.starts_with("content://") {
         return android_files::read_file_content(&path, max_bytes);
     }
 
-    let p = Path::new(&path);
-    if !p.exists() || !p.is_file() {
+    let p = crate::access_policy::permitted_path(&path)?;
+    if !p.is_file() {
         return Err("File does not exist or is not a regular file".to_string());
     }
 
-    let data = fs::read(p).map_err(|e| format!("Cannot read file: {}", e))?;
     let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
     if ext == "pdf" {
+        // PDF text needs the whole file; refuse very large ones instead of loading them into memory.
+        const MAX_PDF_BYTES: u64 = 64 * 1024 * 1024;
+        let size = fs::metadata(&p).map(|m| m.len()).unwrap_or(0);
+        if size > MAX_PDF_BYTES {
+            return Err(format!("PDF is too large to read ({} MB).", size / (1024 * 1024)));
+        }
+        let data = fs::read(&p).map_err(|e| format!("Cannot read file: {}", e))?;
         return Ok(extract_pdf_text(&data, max_bytes));
     }
 
-    let slice = if data.len() > max_bytes {
-        &data[..max_bytes]
-    } else {
-        &data[..]
-    };
-
-    Ok(String::from_utf8_lossy(slice).to_string())
+    // Read only what was asked for, not the whole file.
+    use std::io::Read;
+    let file = fs::File::open(&p).map_err(|e| format!("Cannot read file: {}", e))?;
+    let mut data = Vec::with_capacity(max_bytes.min(1024 * 1024));
+    file.take(max_bytes as u64)
+        .read_to_end(&mut data)
+        .map_err(|e| format!("Cannot read file: {}", e))?;
+    Ok(String::from_utf8_lossy(&data).to_string())
 }
 
 #[tauri::command]
@@ -1035,48 +1040,31 @@ pub fn open_file(path: String) -> Result<(), String> {
         return crate::oauth::open_browser_url(path);
     }
 
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        std::process::Command::new("cmd")
-            .arg("/c")
-            .arg("start")
-            .arg("")
-            .arg(&path)
-            .creation_flags(0x08000000)
-            .spawn()
-            .map_err(|e| format!("Failed to open file or folder: {}", e))?;
-    }
     #[cfg(target_os = "android")]
-    {
-        if path.starts_with("content://") {
-            return if android_files::open_file(&path)? {
-                Ok(())
-            } else {
-                Err("No Android application can open this document".to_string())
-            };
-        }
-        let file_uri = if path.starts_with("file://") { path } else { format!("file://{}", path) };
-        let _ = std::process::Command::new("/system/bin/am")
-            .arg("start")
-            .arg("-a")
-            .arg("android.intent.action.VIEW")
-            .arg("-d")
-            .arg(&file_uri)
-            .status();
+    if path.starts_with("content://") {
+        return if android_files::open_file(&path)? {
+            Ok(())
+        } else {
+            Err("No Android application can open this document".to_string())
+        };
     }
-    #[cfg(all(not(target_os = "windows"), not(target_os = "android")))]
-    {
-        std::process::Command::new("xdg-open")
-            .arg(&path)
-            .spawn()
-            .map_err(|e| format!("Failed to open file: {}", e))?;
+
+    // Documents and folders only, inside the accessible folders, opened without a shell
+    // (the old `cmd /c start <path>` would run executables and interpret cmd metacharacters).
+    let p = crate::access_policy::permitted_path(&path)?;
+    if p.is_file() && crate::access_policy::is_executable(&p) {
+        return Err("Foundry opens documents and folders, not programs or scripts.".to_string());
     }
-    Ok(())
+    let target = crate::access_policy::display_path(&p);
+    if cfg!(target_os = "android") {
+        return crate::access_policy::shell_open(&format!("file://{target}"));
+    }
+    crate::access_policy::shell_open(&target)
 }
 
 #[tauri::command]
 pub fn reveal_file_in_explorer(path: String) -> Result<(), String> {
+    let path = crate::access_policy::display_path(&crate::access_policy::permitted_path(&path)?);
     #[cfg(target_os = "windows")]
     {
         std::process::Command::new("explorer")

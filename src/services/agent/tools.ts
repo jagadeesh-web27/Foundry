@@ -2,6 +2,8 @@ import { IndexedFile, IndexedFolder, ComputerFileType } from '@/types/file';
 import { db } from '@/services/db/database';
 import { computerService } from '@/services/native/computerService';
 import { deviceService } from '@/services/device/deviceService';
+import { trace } from '@/services/debug/trace';
+import { guardTool } from '@/services/permissions/permissionManager';
 
 function isAndroidRuntime(): boolean {
   return deviceService.getAdapter().platform === 'android' && computerService.isTauriEnvironment();
@@ -90,11 +92,11 @@ export const computerTools = {
     name: 'searchFiles',
     description: 'Search and sort files on the computer by query, file type, extension, size, or date ranges. Supports sorting by size (largest/smallest), modified date, or name, and scoping to folders like "Downloads".',
     execute: async (args: SearchFilesArgs, context: AgentContext): Promise<IndexedFile[]> => {
-      console.log('[Foundry Tool] searchFiles called with:', JSON.stringify(args));
+      trace('[Foundry Tool] searchFiles called with:', JSON.stringify(args));
 
       // ALWAYS prefer live Tauri search when available
       if (isAndroidRuntime() || computerService.isTauriEnvironment()) {
-        console.log('[Foundry Tool] searchFiles: using the active device adapter');
+        trace('[Foundry Tool] searchFiles: using the active device adapter');
         const liveFiles = isAndroidRuntime()
           ? await deviceService.getAdapter().filesystem.searchFiles({
               createdAfter: args.createdAfter,
@@ -123,7 +125,7 @@ export const computerTools = {
               sortOrder: args.sortOrder,
             });
 
-        console.log(`[Foundry Tool] searchFiles: LIVE search returned ${liveFiles.length} files`);
+        trace(`[Foundry Tool] searchFiles: LIVE search returned ${liveFiles.length} files`);
 
         const formattedLiveFiles = liveFiles.map((f) => ({
           ...f,
@@ -139,7 +141,7 @@ export const computerTools = {
       }
 
       // Fallback: IndexedDB (only when NOT in Tauri)
-      console.log('[Foundry Tool] searchFiles: No Tauri, falling back to IndexedDB');
+      trace('[Foundry Tool] searchFiles: No Tauri, falling back to IndexedDB');
       let files = context.indexedFiles && context.indexedFiles.length > 0 ? context.indexedFiles : [];
       if (files.length === 0 && typeof indexedDB !== 'undefined') {
         try {
@@ -234,11 +236,11 @@ export const computerTools = {
     name: 'searchFolders',
     description: 'Search folders/directories on the computer by creation date, modification date, or name.',
     execute: async (args: SearchFoldersArgs, context: AgentContext): Promise<IndexedFolder[]> => {
-      console.log('[Foundry Tool] searchFolders called with:', JSON.stringify(args));
+      trace('[Foundry Tool] searchFolders called with:', JSON.stringify(args));
 
       // ALWAYS prefer live Tauri search when available
       if (isAndroidRuntime() || computerService.isTauriEnvironment()) {
-        console.log('[Foundry Tool] searchFolders: using the active device adapter');
+        trace('[Foundry Tool] searchFolders: using the active device adapter');
         const liveFolders = isAndroidRuntime()
           ? await deviceService.getAdapter().filesystem.searchFolders({
               createdAfter: args.createdAfter,
@@ -257,9 +259,9 @@ export const computerTools = {
               limit: args.limit || 200,
             });
 
-        console.log(`[Foundry Tool] searchFolders: LIVE search returned ${liveFolders.length} folders`);
+        trace(`[Foundry Tool] searchFolders: LIVE search returned ${liveFolders.length} folders`);
         if (liveFolders.length > 0) {
-          console.log('[Foundry Tool] First folder:', liveFolders[0].name, liveFolders[0].path, 'created:', liveFolders[0].createdAt);
+          trace('[Foundry Tool] First folder:', liveFolders[0].name, liveFolders[0].path, 'created:', liveFolders[0].createdAt);
         }
 
         // Cache results
@@ -272,7 +274,7 @@ export const computerTools = {
       }
 
       // Fallback: IndexedDB (only when NOT in Tauri)
-      console.log('[Foundry Tool] searchFolders: No Tauri, falling back to IndexedDB');
+      trace('[Foundry Tool] searchFolders: No Tauri, falling back to IndexedDB');
       const folders = context.indexedFolders && context.indexedFolders.length > 0 ? context.indexedFolders : await db.getAllIndexedFolders();
       const limit = args.limit || 50;
       const lowerQuery = args.nameQuery ? args.nameQuery.toLowerCase().trim() : '';
@@ -308,11 +310,9 @@ export const computerTools = {
         if (liveContent) return liveContent;
       }
 
-      // Fallback for non-Tauri / test environments
-      const matched = context?.indexedFiles?.find(f => f.path === args.path || f.name === args.path);
-      if (matched) {
-        return `# Content of ${matched.name}\n\nReact Notes and documentation with details on components, hooks, state, and promises.`;
-      }
+      // No native file access (browser/test) or the read failed: return nothing rather than
+      // placeholder text, so callers report "could not read" instead of summarizing invented content.
+      void context;
       return '';
     },
   },
@@ -355,7 +355,7 @@ export const computerTools = {
     name: 'getDiskInformation',
     description: 'Get real Windows storage and disk drive information including drive letters (C:, D:), total capacity, used space, free space, and percentages.',
     execute: async (): Promise<any> => {
-      console.log('[Foundry Tool] getDiskInformation called');
+      trace('[Foundry Tool] getDiskInformation called');
       return isAndroidRuntime() ? deviceService.getAdapter().system.getDiskInformation() : computerService.getDiskInformation();
     },
   },
@@ -365,7 +365,7 @@ export const computerTools = {
     name: 'getSystemInfo',
     description: 'Get computer hardware and operating system specifications: OS name/version, CPU model, core counts, total RAM, free RAM, used RAM, and system time.',
     execute: async (): Promise<any> => {
-      console.log('[Foundry Tool] getSystemInfo called');
+      trace('[Foundry Tool] getSystemInfo called');
       const hw = isAndroidRuntime() ? await deviceService.getAdapter().system.getSystemInfo() : await computerService.getSystemInfo();
       const now = new Date();
       return {
@@ -383,7 +383,7 @@ export const computerTools = {
     category: 'READ_ONLY',
     description: 'Count files on the computer matching specific criteria (extension, file type, date ranges, query). Use this tool when the user asks "How many..." files exist. Returns the exact numeric count.',
     execute: async (args: CountFilesArgs, context: AgentContext): Promise<{ count: number; extension?: string; fileTypes?: ComputerFileType[]; query?: string }> => {
-      console.log('[Foundry Tool] countFiles called with:', JSON.stringify(args));
+      trace('[Foundry Tool] countFiles called with:', JSON.stringify(args));
       const files = await computerTools.searchFiles.execute({ ...args, limit: 10000 }, context);
       return {
         count: files.length,
@@ -414,7 +414,7 @@ export const computerTools = {
     category: 'READ_ONLY',
     description: 'Get list of currently running/open desktop applications. Call this when the user asks "What applications are open?", "What apps are running?", or "Is <app> open?".',
     execute: async (): Promise<any> => {
-      console.log('[Foundry Tool] getRunningApplications called');
+      trace('[Foundry Tool] getRunningApplications called');
       return computerService.getRunningApplications();
     },
   },
@@ -425,7 +425,7 @@ export const computerTools = {
     category: 'ACTION',
     description: 'Launch an installed application on Windows by name (e.g. "Teams", "Chrome", "Visual Studio Code", "Notepad", "Calculator", "File Explorer"). ACTION tool: validates installed status and requires explicit user confirmation before launching.',
     execute: async (args: OpenApplicationArgs): Promise<OpenApplicationResult> => {
-      console.log('[Foundry Tool] openApplication called with:', JSON.stringify(args));
+      trace('[Foundry Tool] openApplication called with:', JSON.stringify(args));
       const appQuery = args?.application || '';
       if (!appQuery.trim()) {
         return {
@@ -461,7 +461,7 @@ export const computerTools = {
     category: 'READ_ONLY',
     description: 'Inspect application metadata on Windows: installation status, version, install location, publisher, and whether it is currently running. Call this when the user asks "Is <app> installed?", "What version of <app> do I have?", "Where is <app> installed?", or "Is <app> running?".',
     execute: async (args: GetApplicationDetailsArgs): Promise<any> => {
-      console.log('[Foundry Tool] getApplicationDetails called with:', JSON.stringify(args));
+      trace('[Foundry Tool] getApplicationDetails called with:', JSON.stringify(args));
       return computerService.getApplicationDetails(args?.application || '');
     },
   },
@@ -472,11 +472,17 @@ export const computerTools = {
     category: 'READ_ONLY',
     description: 'Get real Windows network connection details: connection status, internet accessibility, connection type (Wi-Fi or Ethernet), Wi-Fi SSID, signal strength, primary IP address, and active network interfaces.',
     execute: async (): Promise<any> => {
-      console.log('[Foundry Tool] getNetworkInformation called');
+      trace('[Foundry Tool] getNetworkInformation called');
       return isAndroidRuntime() ? deviceService.getAdapter().network.getNetworkInformation() : computerService.getNetworkInformation();
     },
   },
 };
+
+// Single permission gateway: every computer tool checks the user's permission settings on each call.
+for (const [toolName, tool] of Object.entries(computerTools)) {
+  const guarded = tool as { execute: (...args: any[]) => Promise<unknown> };
+  guarded.execute = guardTool(toolName, guarded.execute);
+}
 
 export interface OpenApplicationArgs {
   application: string;

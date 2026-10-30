@@ -1,5 +1,7 @@
 
 
+pub mod access_policy;
+pub mod fuzzy;
 pub mod filesystem;
 pub mod system;
 pub mod applications;
@@ -192,6 +194,7 @@ pub fn run() {
         .run(|_app, event| {
             if let tauri::RunEvent::Exit = event {
                 desktop_ai::stop_server();
+                whisper::stop_server();
             }
         });
 }
@@ -253,6 +256,29 @@ mod tests {
         assert!(query_matches("My Resume.docx", "C:/Docs/My Resume.docx", "resume"));
         assert!(!query_matches("10th.pdf", "C:/Downloads/10th.pdf", "resume"));
         assert!(!query_matches("AB2409260000014919.PDF", "C:/Downloads/AB2409260000014919.PDF", "resume"));
+    }
+
+    #[test]
+    fn test_misspelled_app_names_resolve() {
+        let app = |name: &str| DiscoveredApplication {
+            name: name.to_string(),
+            display_name: name.to_string(),
+            application_id: None,
+            package_name: None,
+            publisher: None,
+            executable_path: None,
+            launch_identifier: name.to_string(),
+            source: "test".to_string(),
+            version: None,
+        };
+        let whatsapp = app("WhatsApp");
+        let steam = app("Steam");
+        for q in ["whatapp", "watsapp", "whats app", "WhatsApp", "open whatapp app"] {
+            assert!(score_application_match(&whatsapp, q) > 0, "{q} should match WhatsApp");
+        }
+        assert!(score_application_match(&steam, "whatapp") <= 0);
+        // An exact name still outranks a fuzzy one.
+        assert!(score_application_match(&app("Telegram"), "telegram") > score_application_match(&app("Telegram"), "telegarm"));
     }
 
     #[test]
