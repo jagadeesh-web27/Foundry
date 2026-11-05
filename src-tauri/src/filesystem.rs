@@ -504,12 +504,12 @@ pub fn search_files_live(
         get_accessible_directories().into_iter().filter(|d| d.exists).map(|d| PathBuf::from(d.path)).collect()
     };
 
-    for root in target_dirs {
+    for root in &target_dirs {
         if results.len() >= scan_limit {
             break;
         }
         search_files_recursive(
-            &root,
+            root,
             0,
             max_depth,
             created_after.as_deref(),
@@ -519,9 +519,40 @@ pub fn search_files_live(
             file_types.as_deref(),
             lower_ext.as_deref(),
             lower_query.as_deref(),
+            false,
             scan_limit,
             &mut results,
         );
+    }
+
+    // Typo-tolerant matching is a fallback: when the words as typed already match files, those are
+    // what the user asked for ("notes" must not pull in "nodes"). Only when exact matching finds very
+    // little ("resme", "adhar" vs "Aadhaar_Card") are near-miss spellings added, ranked after them.
+    const FUZZY_FALLBACK_BELOW: usize = 5;
+    if lower_query.is_some() && results.len() < FUZZY_FALLBACK_BELOW {
+        let mut fuzzy_results = Vec::new();
+        for root in &target_dirs {
+            if fuzzy_results.len() >= scan_limit {
+                break;
+            }
+            search_files_recursive(
+                root,
+                0,
+                max_depth,
+                created_after.as_deref(),
+                created_before.as_deref(),
+                modified_after.as_deref(),
+                modified_before.as_deref(),
+                file_types.as_deref(),
+                lower_ext.as_deref(),
+                lower_query.as_deref(),
+                true,
+                scan_limit,
+                &mut fuzzy_results,
+            );
+        }
+        let seen: std::collections::HashSet<String> = results.iter().map(|f| f.path.clone()).collect();
+        results.extend(fuzzy_results.into_iter().filter(|f| !seen.contains(&f.path)));
     }
 
     // Sort if requested, or sort by relevance if query is present
@@ -601,7 +632,17 @@ fn looks_like_resume(file_name: &str) -> bool {
 
 /// Decide whether a file satisfies a free-text query. Every meaningful query word must appear in the
 /// file name or path (plural-insensitive); resume/cv queries also match resume-like names.
+/// Exact matching (as typed, plural-insensitive, resume/CV aliases).
 pub fn query_matches(file_name: &str, file_path: &str, query: &str) -> bool {
+    query_matches_with(file_name, file_path, query, false)
+}
+
+/// Exact matching plus near-miss spellings and transliterations.
+pub fn query_matches_fuzzy(file_name: &str, file_path: &str, query: &str) -> bool {
+    query_matches_with(file_name, file_path, query, true)
+}
+
+pub fn query_matches_with(file_name: &str, file_path: &str, query: &str, fuzzy: bool) -> bool {
     let q = query.to_lowercase();
     let lname = file_name.to_lowercase();
     let lpath = file_path.to_lowercase();
@@ -621,7 +662,7 @@ pub fn query_matches(file_name: &str, file_path: &str, query: &str) -> bool {
         let stem = if w.ends_with('s') && w.len() > 3 { &w[..w.len() - 1] } else { w.as_str() };
         let resume_word = w == "resume" || w == "resumes" || w == "cv";
         // Misspellings and transliterations ("resme", "adhar" vs "Aadhaar_Card.pdf") via fuzzy token match.
-        let fuzzy_hit = w.chars().count() >= 4 && crate::fuzzy::matches_any_token(w, file_name);
+        let fuzzy_hit = fuzzy && w.chars().count() >= 4 && crate::fuzzy::matches_any_token(w, file_name);
         fuzzy_hit
             || (resume_word && looks_like_resume(file_name))
             || lname.contains(w.as_str())
@@ -741,6 +782,7 @@ fn search_files_recursive(
     file_types: Option<&[String]>,
     extension: Option<&str>,
     query: Option<&str>,
+    fuzzy: bool,
     max_results: usize,
     results: &mut Vec<DiscoveredFile>,
 ) {
@@ -776,6 +818,7 @@ fn search_files_recursive(
                 file_types,
                 extension,
                 query,
+                fuzzy,
                 max_results,
                 results,
             );
@@ -820,7 +863,7 @@ fn search_files_recursive(
             }
 
             if let Some(q) = query {
-                if !query_matches(&file_name, &path.to_string_lossy(), q) {
+                if !query_matches_with(&file_name, &path.to_string_lossy(), q, fuzzy) {
                     continue;
                 }
             }
@@ -910,7 +953,7 @@ pub fn scan_user_directory(dir_path: String, max_files: usize) -> Vec<Discovered
     if !root.exists() || !root.is_dir() {
         return files;
     }
-    search_files_recursive(root, 0, 5, None, None, None, None, None, None, None, max_files, &mut files);
+    search_files_recursive(root, 0, 5, None, None, None, None, None, None, None, false, max_files, &mut files);
     files
 }
 

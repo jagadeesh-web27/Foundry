@@ -49,7 +49,7 @@ pub fn skeleton(word: &str) -> String {
 fn allowed_typos(len: usize) -> usize {
     match len {
         0..=3 => 0,
-        4..=7 => 1,
+        4..=9 => 1,
         _ => 2,
     }
 }
@@ -106,6 +106,7 @@ mod tests {
     fn unrelated_words_do_not_match() {
         assert!(!words_match("teams", "steam"));
         assert!(!words_match("invoice", "voice"));
+        assert!(!words_match("passport", "password"));
         assert!(!words_match("pan", "pen"));
         assert!(!words_match("resume", "result"));
         assert!(!words_match("adhar", "radar"));

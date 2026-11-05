@@ -283,9 +283,12 @@ mod tests {
 
     #[test]
     fn test_query_matches_aadhaar_spellings() {
-        assert!(query_matches("Aadhaar_Card_Jagadeesh.pdf", "C:/Docs/Aadhaar_Card_Jagadeesh.pdf", "adhar"));
-        assert!(query_matches("my aadhar.jpg", "C:/Pictures/my aadhar.jpg", "aadhaar"));
-        assert!(!query_matches("10th.pdf", "C:/Downloads/10th.pdf", "adhar"));
+        assert!(query_matches_fuzzy("Aadhaar_Card_Jagadeesh.pdf", "C:/Docs/Aadhaar_Card_Jagadeesh.pdf", "adhar"));
+        // exact mode does not guess spellings
+        assert!(!query_matches("Aadhaar_Card_Jagadeesh.pdf", "C:/Docs/Aadhaar_Card_Jagadeesh.pdf", "adhar"));
+        assert!(query_matches_fuzzy("my aadhar.jpg", "C:/Pictures/my aadhar.jpg", "aadhaar"));
+        assert!(!query_matches_fuzzy("CTEST_DROP_SITE_PASSWORD.html", "C:/x/CTEST_DROP_SITE_PASSWORD.html", "passport"));
+        assert!(!query_matches_fuzzy("10th.pdf", "C:/Downloads/10th.pdf", "adhar"));
     }
 
     #[test]

@@ -1,0 +1,11 @@
+{
+  "description": "Desktop: opening installed applications by (mis)spelled name. Expectations reflect apps installed on the developer laptop on 30 Oct 2026 (WhatsApp, Chrome, Calculator installed; Spotify not installed).",
+  "timeoutSec": 120,
+  "cases": [
+    { "id": "open-whatapp", "query": "open whatapp", "expect": { "all": ["whatsapp"], "none": ["not installed", "could not be found"], "maxSeconds": 30 } },
+    { "id": "open-watsapp", "query": "open watsapp", "expect": { "all": ["whatsapp"], "none": ["not installed"], "maxSeconds": 30 } },
+    { "id": "open-chorme", "query": "open chorme", "expect": { "all": ["chrome"], "none": ["not installed"], "maxSeconds": 30 } },
+    { "id": "open-calculator", "query": "open calculator", "expect": { "all": ["calculator"], "maxSeconds": 30 } },
+    { "id": "open-missing-app", "query": "open spotify", "expect": { "any": ["not installed", "could not be found"], "maxSeconds": 30 } }
+  ]
+}
