@@ -1,9 +1,11 @@
 import React from 'react';
 import { Database, Cpu, WifiOff, ShieldCheck } from 'lucide-react';
 import { useApp } from '@/stores/AppContext';
+import { useIndexStatus, describeIndexStatus } from '@/hooks/useIndexStatus';
 
 export const StatusBar: React.FC = () => {
   const { aiStatus, stats } = useApp();
+  const index = useIndexStatus();
 
   return (
     <footer
@@ -12,15 +14,15 @@ export const StatusBar: React.FC = () => {
       aria-label="Application Status"
     >
       <div className="flex items-center space-x-4">
-        {/* Local Storage Engine */}
-        <div className="flex items-center space-x-1.5" title="All data stored strictly on this device">
-          <Database className="w-3 h-3 text-blue-500" />
-          <span>Local Engine: SQLite/IDB Ready</span>
-        </div>
-
-        {/* Accessible files status */}
-        <div className="flex items-center space-x-1.5">
-          <span>{stats.totalIndexedFiles.toLocaleString()} files indexed</span>
+        {/* File index (desktop app): real counts from the local index; browser builds show the cache size */}
+        <div
+          className="flex items-center space-x-1.5"
+          title={index ? `Indexed folders: ${index.roots.join(', ')}` : 'All data stored strictly on this device'}
+          role="status"
+          aria-live="polite"
+        >
+          <Database className={`w-3 h-3 ${index && index.state !== 'ready' ? 'text-amber-500 animate-pulse' : 'text-blue-500'}`} aria-hidden="true" />
+          <span>{index ? describeIndexStatus(index) : `${stats.totalIndexedFiles.toLocaleString()} files cached`}</span>
         </div>
 
         {/* Offline first indicator */}

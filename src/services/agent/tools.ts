@@ -37,6 +37,8 @@ export interface SearchFilesArgs {
   scopePath?: string;
   sortBy?: 'size' | 'modified' | 'created' | 'name';
   sortOrder?: 'asc' | 'desc';
+  /** Search inside file contents as well as names. */
+  content?: boolean;
 }
 
 export function formatBytes(bytes: number): string {
@@ -123,6 +125,7 @@ export const computerTools = {
               scopePath: args.scopePath,
               sortBy: args.sortBy,
               sortOrder: args.sortOrder,
+              content: args.content,
             });
 
         trace(`[Foundry Tool] searchFiles: LIVE search returned ${liveFiles.length} files`);

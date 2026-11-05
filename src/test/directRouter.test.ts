@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { routeQuery, extractQuery, normalizeInput, looksLikeGeneralKnowledge } from '@/services/agent/directRouter';
+import { routeQuery, extractQuery, normalizeInput, looksLikeGeneralKnowledge, detectTimeRange } from '@/services/agent/directRouter';
 import { DynamicAgent } from '@/services/agent/dynamicAgent';
 
 describe('directRouter: device and file questions are routed to real tools', () => {
@@ -72,6 +72,48 @@ describe('directRouter: device and file questions are routed to real tools', () 
     expect(looksLikeGeneralKnowledge('give me my adhar')).toBe(false);
     expect(looksLikeGeneralKnowledge('what is my battery level')).toBe(false);
     expect(looksLikeGeneralKnowledge('what files do i have')).toBe(false);
+  });
+
+  it('understands dates: added vs modified, today / yesterday / ranges', () => {
+    const now = new Date(2026, 10, 5, 15, 30); // Thu 5 Nov 2026, local time
+    const today = detectTimeRange('show files I added today', now)!;
+    expect(today.field).toBe('created');
+    expect(today.after).toEqual(new Date(2026, 10, 5));
+    expect(today.label).toBe('added today');
+    const yday = detectTimeRange('what did I edit yesterday', now)!;
+    expect(yday.field).toBe('modified');
+    expect(yday.after).toEqual(new Date(2026, 10, 4));
+    expect(yday.before).toEqual(new Date(2026, 10, 5));
+    expect(detectTimeRange('files modified this week', now)!.after).toEqual(new Date(2026, 10, 2)); // Monday
+    expect(detectTimeRange('pdfs from the last 3 days', now)!.after).toEqual(new Date(2026, 10, 3));
+    expect(detectTimeRange('find my resume', now)).toBeNull();
+  });
+
+  it('routes date questions to a filtered file search without leaking date words into the query', () => {
+    const route = routeQuery('Show files I added today') as any;
+    expect(route.kind).toBe('search');
+    expect(route.args.query).toBeUndefined();
+    expect(route.args.createdAfter).toBeDefined();
+    expect(route.args.sortBy).toBe('created');
+    expect(route.label).toBe('files added today');
+
+    const pdfs = routeQuery('how many pdfs did I download this week') as any;
+    expect(pdfs.kind).toBe('count');
+    expect(pdfs.args.extension).toBe('pdf');
+    expect(pdfs.args.createdAfter).toBeDefined();
+
+    expect((routeQuery('what did I download yesterday') as any)?.kind).toBe('search');
+  });
+
+  it('content searches keep only the meaningful words and ask for content matches', () => {
+    const route = routeQuery('find documents related to React development') as any;
+    expect(route.kind).toBe('search');
+    expect(route.args.query).toBe('react development');
+    expect(route.args.content).toBe(true);
+    expect(route.label).toBe('files about "react development"');
+    expect((routeQuery('find files mentioning invoice') as any).args.content).toBe(true);
+    // naming a thing is a name search, not a content search
+    expect((routeQuery('find my passport') as any).args.content).toBeUndefined();
   });
 
   it('extractQuery drops filler and fixes typos', () => {

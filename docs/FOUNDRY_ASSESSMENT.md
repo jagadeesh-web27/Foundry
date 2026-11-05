@@ -211,19 +211,48 @@ Suite: `tests/e2e/phone-suite.json`. Report: `artifacts/e2e/phone-baseline-oldap
   - "give me my resme" was refused as a request for a "residency number".
   - File questions took about 25 s each; general questions took 4–25 s.
 
-### Phase 0: safety and honesty (in progress)
+### Phase 0: safety and honesty (done 30 Oct–5 Nov)
 | Item | Status |
 |---|---|
 | git repo, `.gitignore` for models/runtimes/APKs; pushed to github.com/jagadeesh-web27/Foundry (office Wi-Fi name scrubbed from history first) | Done |
 | Fabricated `readFile` content removed; PDF/DOCX import refuses instead of indexing placeholder text | Done + unit-tested |
 | Single permission gateway for every tool (computerTools + toolRegistry) | Done + unit-tested |
 | `access_policy.rs`: file access limited to the accessible folders (canonicalized; hidden/system folders and key files refused); `open_file` never executes programs and uses no shell; browser links limited to http/https; proxy limited to loopback + listed APIs, with no redirects and a 32 MB cap; app launch only for resolver-registered targets | Done + 7 Rust tests |
-| Content security policy | Configured; release-build verification pending |
+| Content security policy | Done: verified in the release build (outside fetch, inline script and eval are blocked; IPC works) |
 | Agent loop bounded (model rounds capped) | Done |
 | Whisper: no hard-coded `D:\` paths, stopped on exit | Done |
 | User-data console logs only in dev builds (`services/debug/trace.ts`) | Done |
 | Heavy commands (disk walks, reads, PowerShell, netsh) off the UI thread | Done (`#[tauri::command(async)]`) |
 | End-to-end harness `scripts/e2e-chat.mjs` + desktop and phone suites (see `docs/TESTING.md`) | Done |
+| Typo-tolerant matching (`fuzzy.rs`) for files and apps, used only as a fallback after exact matches | Done: "whatapp", "chorme", "resme", "adhar" resolve; "passport" no longer matches "password" |
+| Mobile UX (bottom navigation, 44 px touch targets, fixed-height shell, readable text, full-screen dialogs) | Done; phone suite 11/11 on the 30 Oct APK |
+| Build fix: the web UI is re-embedded whenever it changes (`build.rs`) | Done; found by comparing the embedded asset names with `dist/` |
+
+### Phase 1: file index (5 Nov)
+`src-tauri/src/index.rs` + `extract.rs`. SQLite with FTS5 in `%LOCALAPPDATA%\Foundry\index.sqlite`, desktop only.
+
+| Measured on the developer laptop (35,639 files on D:\ and the profile folders) | Before (disk walk) | Index |
+|---|---|---|
+| Name search ("resume", "adhar", "accessibility audit") | 2–10 s | **1–15 ms** |
+| Typo / content fallback ("resme", "invoice") | 2–10 s | **15–26 ms** |
+| Full index of all folders / re-check with no changes | – | **0.9 s / 0.4 s** |
+| Text extraction (PDF, Word, Excel, PowerPoint, OpenDocument, text, code) | none | ~130 files/s in the background; about 3 minutes for all ~21,000 readable files |
+
+What the index does:
+- **Stays current.** A watcher applies creations, edits, renames and deletions; each launch re-checks with an incremental crawl, which re-reads only changed files.
+- **Ranks by match type.** Names and folder names come first; text inside files is searched when asked ("documents **about** X", "files **mentioning** Y"). Otherwise contents are a clearly labelled fallback ("no file is named X, but these documents mention it"), limited to personal documents.
+- **Understands dates.** Filters such as "added today", "edited this week" and "downloaded in the last 3 days".
+- **Shows why a file matched.** Content matches carry a snippet, which the file card displays.
+
+Decisions driven by real-data results, not by tests on made-up files:
+- **Content is only a fallback for "find my X".** "find my passport" first returned source code that uses the *passport* login library. Content search is now opt-in by phrasing, and the fallback excludes code and files inside software projects (folders with `.git`, `package.json`, `Cargo.toml` and the like).
+- **The fallback requires the exact phrase.** "offer letter" had matched documents where the two words were far apart.
+- **Random codes in file names are not split into words.** `popup_notification-CvTOvKpR.mp3` matched "resume" through the token "Cv".
+- **Short consonant patterns no longer count as a typo match.** "salary" had matched "silero" (both "slr").
+- **Credential files are indexed by name only.** The text of `GSC_Login_Credentials.txt` was being copied into the index; names containing password, credential, secret or token are now never read.
+- **Per-file text is capped** (documents 40k characters, code 8k), keeping the index to about 100–150 MB.
+
+**Scope (differs from decision 2 below):** the index covers the same locations the app already searched, meaning the profile folders plus secondary data drives (D:\ etc.). Restricting it to four folders would have lost results the user relies on, such as the Aadhaar and résumé files on D:\. The system drive root is not indexed.
 
 ## 8. Decisions (recommendations accepted by the product owner on 30 Oct)
 

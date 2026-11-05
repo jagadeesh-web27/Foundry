@@ -395,6 +395,10 @@ pub async fn proxy_http_request(
 ) -> Result<HttpProxyResponse, String> {
     // Only the local machine (local AI engines) and the cloud APIs Foundry's connectors use.
     crate::access_policy::check_proxy_url(&url)?;
+    // An AI answer is being generated on this machine: background indexing yields the CPU until it ends.
+    #[cfg(not(target_os = "android"))]
+    let _foreground = (url.contains(&format!(":{}/", crate::desktop_ai::LLAMA_PORT)) && url.contains("/chat/"))
+        .then(crate::index::foreground_work);
     // Responses are returned whole to the webview, so cap their size.
     const MAX_RESPONSE_BYTES: usize = 32 * 1024 * 1024;
 

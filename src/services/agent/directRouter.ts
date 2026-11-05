@@ -14,6 +14,81 @@ export interface FileSearchArgs {
   query?: string;
   extension?: string;
   fileTypes?: string[];
+  createdAfter?: string;
+  createdBefore?: string;
+  modifiedAfter?: string;
+  modifiedBefore?: string;
+  sortBy?: 'modified' | 'created' | 'size' | 'name';
+  sortOrder?: 'asc' | 'desc';
+  /** The person asked about contents ("documents about X", "files mentioning Y"). */
+  content?: boolean;
+}
+
+export interface TimeRange {
+  field: 'created' | 'modified';
+  after: Date;
+  before?: Date;
+  /** e.g. "added today", "modified this week" */
+  label: string;
+}
+
+/** Words describing *when*; removed from the name/content query once understood as a date filter. */
+const TIME_WORDS = new Set([
+  'today', 'yesterday', 'this', 'last', 'past', 'week', 'weeks', 'month', 'months', 'day', 'days', 'recent',
+  'add', 'download', 'downloads', 'create', 'save', 'receive', 'edit', 'change', 'update', 'modify',
+  'recently', 'latest', 'newest', 'new', 'added', 'created', 'downloaded', 'saved', 'received', 'got', 'modified',
+  'edited', 'changed', 'updated', 'worked', 'opened', 'ago', 'since', 'during',
+]);
+
+function startOfDay(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+/** Understand "today", "yesterday", "this/last week", "this/last month", "last N days", "recent". */
+export function detectTimeRange(text: string, now: Date = new Date()): TimeRange | null {
+  const t = text.toLowerCase();
+  const field: 'created' | 'modified' = /\b(add|added|create|created|download|downloads|downloaded|save|saved|receive|received|got|new)\b/.test(t) ? 'created' : 'modified';
+  const verb = field === 'created' ? 'added' : 'modified';
+  const today = startOfDay(now);
+  const day = 24 * 60 * 60 * 1000;
+  let after: Date | null = null;
+  let before: Date | undefined;
+  let when = '';
+
+  const lastN = t.match(/\b(?:last|past)\s+(\d{1,3})\s+(day|days|week|weeks)\b/);
+  if (lastN) {
+    const n = Number(lastN[1]) * (lastN[2].startsWith('week') ? 7 : 1);
+    after = new Date(today.getTime() - (n - 1) * day);
+    when = `in the last ${lastN[1]} ${lastN[2]}`;
+  } else if (/\btoday\b/.test(t)) {
+    after = today;
+    when = 'today';
+  } else if (/\byesterday\b/.test(t)) {
+    after = new Date(today.getTime() - day);
+    before = today;
+    when = 'yesterday';
+  } else if (/\bthis week\b/.test(t)) {
+    const mondayOffset = (today.getDay() + 6) % 7;
+    after = new Date(today.getTime() - mondayOffset * day);
+    when = 'this week';
+  } else if (/\blast week\b/.test(t)) {
+    const mondayOffset = (today.getDay() + 6) % 7;
+    before = new Date(today.getTime() - mondayOffset * day);
+    after = new Date(before.getTime() - 7 * day);
+    when = 'last week';
+  } else if (/\bthis month\b/.test(t)) {
+    after = new Date(today.getFullYear(), today.getMonth(), 1);
+    when = 'this month';
+  } else if (/\blast month\b/.test(t)) {
+    after = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    before = new Date(today.getFullYear(), today.getMonth(), 1);
+    when = 'last month';
+  } else if (/\b(recent|recently|latest|newest)\b/.test(t)) {
+    after = new Date(today.getTime() - 6 * day);
+    when = 'in the last 7 days';
+  }
+  if (!after) return null;
+  return { field, after, before, label: `${verb} ${when}` };
 }
 
 export type DirectRoute =
@@ -38,6 +113,8 @@ export interface DirectResponse {
 
 const FILE_NOUN =
   /\b(files?|folders?|directories|docs?|documents?|pdfs?|docx?|xlsx?|csv|excel|word|powerpoint|pptx?|slides?|presentations?|spreadsheets?|photos?|pictures?|images?|screenshots?|videos?|recordings?|music|songs?|audio|resumes?|cv|invoices?|reports?|notes?)\b/i;
+/** Requests about what files say, not what they are called. */
+const CONTENT_INTENT = /\b(about|related to|regarding|concerning|containing|contains?|mentioning|mentions?|discuss(es|ing)?|talks? about|that (say|says|mention|mentions))\b/;
 const SEARCH_VERB = /\b(find|search|locate|show|give|get|list|where|look for|display|fetch|need|see)\b/i;
 const READ_VERB = /\b(read|summari[sz]e|summary|what('?s| is) in|what does .* say)\b/i;
 
@@ -57,6 +134,8 @@ const FILLER = new Set([
   'pdf', 'pdfs', 'word', 'docx', 'excel', 'xlsx', 'xls', 'spreadsheet', 'spreadsheets', 'powerpoint', 'pptx',
   'ppt', 'slides', 'presentation', 'presentations', 'csv', 'photo', 'photos', 'picture', 'pictures', 'image',
   'images', 'video', 'videos', 'music', 'audio', 'song', 'songs', 'screenshot', 'screenshots', 'recording', 'recordings',
+  'related', 'regarding', 'concerning', 'containing', 'mentioning', 'mention', 'mentions', 'contain', 'contains',
+  'has', 'have', 'had', 'did', 'last', 'some', 'by', 'at', 'or',
 ]);
 
 function levenshtein(a: string, b: string): number {
@@ -91,12 +170,12 @@ export function detectFileType(text: string): TypeMatch {
   return { label: 'files' };
 }
 
-export function extractQuery(text: string): string {
+export function extractQuery(text: string, dropTimeWords = false): string {
   const tokens = text
     .toLowerCase()
     .replace(/[^a-z0-9\s_.-]/g, ' ')
     .split(/\s+/)
-    .filter((t) => t && !FILLER.has(t))
+    .filter((t) => t && !FILLER.has(t) && !(dropTimeWords && (TIME_WORDS.has(t) || /^\d{1,3}$/.test(t))))
     .map(fixTypos);
   return tokens.join(' ').trim();
 }
@@ -152,22 +231,44 @@ export function routeQuery(rawInput: string): DirectRoute | null {
 
   // "find my offer letter" / "where is my passport": a named personal item, not a known file type.
   const namedItem = !hasFileNoun && SEARCH_VERB.test(text) && /\bmy\b/.test(text) && !APP_DOMAIN.test(text);
-  if (!hasFileNoun && !namedItem && !READ_VERB.test(text)) return null;
+  // "what did I download yesterday", "what have I saved this week": file activity in a time range.
+  const fileActivity =
+    !hasFileNoun && !!detectTimeRange(text) && /\b(download(ed)?|added|saved|edited|modified|changed|created|received)\b/.test(text);
+  if (!hasFileNoun && !namedItem && !fileActivity && !READ_VERB.test(text)) return null;
 
   const type = detectFileType(text);
-  const query = extractQuery(text);
+  const time = detectTimeRange(text);
+  const query = extractQuery(text, !!time);
   const args: FileSearchArgs = { extension: type.extension, fileTypes: type.fileTypes, query: query || undefined };
+  if (query && CONTENT_INTENT.test(text)) args.content = true;
+  if (time) {
+    const after = time.after.toISOString();
+    const before = time.before?.toISOString();
+    if (time.field === 'created') {
+      args.createdAfter = after;
+      args.createdBefore = before;
+    } else {
+      args.modifiedAfter = after;
+      args.modifiedBefore = before;
+    }
+    if (!query) {
+      args.sortBy = time.field;
+      args.sortOrder = 'desc';
+    }
+  }
+  const base = query ? (args.content ? `${type.label} about "${query}"` : `${type.label} matching "${query}"`) : type.label;
+  const label = time ? `${base} ${time.label}` : base;
 
   if (/\b(how many|count|number of)\b/.test(text)) {
-    return { kind: 'count', args, label: query ? `${type.label} matching "${query}"` : type.label };
+    return { kind: 'count', args, label };
   }
   if (READ_VERB.test(text) && (query || type.extension || type.fileTypes)) {
     return { kind: 'read', args, label: query || type.label };
   }
-  if (SEARCH_VERB.test(text) || /\bmy\b/.test(text)) {
-    if (!query && !type.extension && !type.fileTypes) return null;
+  if (SEARCH_VERB.test(text) || /\bmy\b/.test(text) || time) {
+    if (!query && !type.extension && !type.fileTypes && !time) return null;
     const showAll = /\b(all|every|list)\b/.test(text);
-    return { kind: 'search', args, label: query ? `${type.label} matching "${query}"` : type.label, showAll };
+    return { kind: 'search', args, label, showAll };
   }
   return null;
 }
@@ -216,10 +317,17 @@ function formatNetwork(n: any): string {
 async function searchWithFallback(args: FileSearchArgs, context: AgentContext, limit: number): Promise<IndexedFile[]> {
   const payload: any = { ...args, limit };
   let files = await computerTools.searchFiles.execute(payload, context);
-  // Nothing matched the whole phrase: retry with the longest single word.
+  // Nothing matched the whole phrase (Android's search matches the phrase literally): retry with the
+  // longest word, but keep only files whose name or folder contains every word. Without that filter,
+  // "offer letter" returned "Radio_Button_Letter_by_Letter.png".
   if (files.length === 0 && args.query && args.query.includes(' ')) {
-    const longest = args.query.split(' ').sort((a, b) => b.length - a.length)[0];
-    files = await computerTools.searchFiles.execute({ ...payload, query: longest }, context);
+    const words = args.query.split(' ').filter(Boolean);
+    const longest = [...words].sort((a, b) => b.length - a.length)[0];
+    const normalize = (s: string) => s.toLowerCase().replace(/[_\-.]+/g, ' ');
+    const candidates = await computerTools.searchFiles.execute({ ...payload, query: longest, limit: 200 }, context);
+    files = candidates
+      .filter((f) => words.every((w) => normalize(f.name).includes(w) || normalize(f.path).includes(w)))
+      .slice(0, limit);
   }
   return files;
 }
@@ -269,7 +377,13 @@ export async function runDirectRoute(
           return { message: `I couldn't find any ${route.label} on this device.`, toolsExecuted: tools, files: [], plan: { intent: 'DIRECT_SEARCH_NONE' } };
         }
         const shown = files.slice(0, route.showAll ? 20 : 5);
-        const head = files.length === 1 ? `I found 1 file for ${route.label}:` : `I found ${files.length} ${route.label}. Showing the top ${shown.length}:`;
+        const onlyMentions = !route.args.content && !!route.args.query && files.every((f) => f.matchIn === 'content');
+        const n = files.length;
+        const head = onlyMentions
+          ? `I couldn't find a file named "${route.args.query}", but ${n === 1 ? '1 document mentions' : `${n} documents mention`} it${n > shown.length ? ` (showing ${shown.length})` : ''}:`
+          : n === 1
+            ? `I found 1 file for ${route.label}:`
+            : `I found ${n} ${route.label}. Showing the top ${shown.length}:`;
         return { message: head, toolsExecuted: tools, files: shown, plan: { intent: 'DIRECT_SEARCH' } };
       }
       case 'folders': {
@@ -292,20 +406,50 @@ export async function runDirectRoute(
         tools.push('searchFiles');
         const files = await searchWithFallback(route.args, context, 10);
         if (files.length === 0) return { message: `I couldn't find "${route.label}" on this device to read.`, toolsExecuted: tools, files: [] };
-        const top = files[0];
+        // The best-ranked match is not always readable (empty, scanned or broken files): use the first of
+        // the top candidates that actually contains text, and say which ones were skipped.
         tools.push('readFile');
-        const text = String((await computerTools.readFile.execute({ path: top.path, maxChars: 6000 }, context)) || '').trim();
-        if (!text) {
-          return { message: `I found **${top.name}** but could not extract any readable text from it.`, toolsExecuted: tools, files: [top] };
+        let chosen: IndexedFile | null = null;
+        let text = '';
+        const skipped: string[] = [];
+        for (const candidate of files.slice(0, 5)) {
+          let content = '';
+          try {
+            content = String((await computerTools.readFile.execute({ path: candidate.path, maxChars: 6000 }, context)) || '').trim();
+          } catch {
+            content = '';
+          }
+          if (content.length >= 40) {
+            chosen = candidate;
+            text = content;
+            break;
+          }
+          skipped.push(candidate.name);
         }
+        if (!chosen) {
+          return {
+            message: `I found ${plural(files.length, 'matching file')}, but none of the top ones contain readable text (they may be scanned images): ${skipped.slice(0, 3).join(', ')}.`,
+            toolsExecuted: tools,
+            files: files.slice(0, 3),
+          };
+        }
+        const note = skipped.length ? `
+
+_(Skipped ${skipped.join(', ')}: no readable text.)_` : '';
         if (!ai?.available) {
-          return { message: `I found **${top.name}**. The on-device AI is not ready yet, so here is the beginning of the file:\n\n${text.slice(0, 600)}`, toolsExecuted: tools, files: [top] };
+          return { message: `I found **${chosen.name}**. The on-device AI is not ready yet, so here is the beginning of the file:
+
+${text.slice(0, 600)}${note}`, toolsExecuted: tools, files: [chosen] };
         }
         const summary = await ai.service.getProvider().chat([
           { role: 'system', content: 'You are Foundry. Summarize the document below for the user in a few short, factual sentences. Use only the text provided. Do not invent details.' },
-          { role: 'user', content: `Document "${top.name}":\n---\n${text.slice(0, 3500)}\n---\nRequest: ${userInput}` },
+          { role: 'user', content: `Document "${chosen.name}":
+---
+${text.slice(0, 3500)}
+---
+Request: ${userInput}` },
         ]);
-        return { message: summary.trim() || `I found **${top.name}**.`, toolsExecuted: tools, files: [top], plan: { intent: 'DIRECT_READ' } };
+        return { message: `${summary.trim() || `I found **${chosen.name}**.`}${note}`, toolsExecuted: tools, files: [chosen], plan: { intent: 'DIRECT_READ' } };
       }
     }
   } catch (err: any) {

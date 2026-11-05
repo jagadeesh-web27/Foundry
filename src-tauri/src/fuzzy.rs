@@ -68,8 +68,12 @@ pub fn words_match(query_word: &str, token: &str) -> bool {
     if edit_distance(&q, &t) <= allowed_typos(shortest) {
         return true;
     }
+    // Same consonant skeleton (transliterations: adhar / aadhaar -> "adhr"). Short skeletons are too
+    // common ("salary" and "silero" are both "slr"), so those also need to be close in spelling.
     let (sq, st) = (skeleton(&q), skeleton(&t));
-    sq.len() >= 3 && sq == st && q.chars().next() == t.chars().next()
+    sq == st
+        && q.chars().next() == t.chars().next()
+        && (sq.len() >= 4 || (sq.len() == 3 && edit_distance(&q, &t) <= 2))
 }
 
 /// Split text into lowercase alphanumeric tokens.
@@ -107,6 +111,7 @@ mod tests {
         assert!(!words_match("teams", "steam"));
         assert!(!words_match("invoice", "voice"));
         assert!(!words_match("passport", "password"));
+        assert!(!words_match("salary", "silero"));
         assert!(!words_match("pan", "pen"));
         assert!(!words_match("resume", "result"));
         assert!(!words_match("adhar", "radar"));

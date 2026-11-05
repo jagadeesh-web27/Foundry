@@ -1,0 +1,13 @@
+{
+  "description": "Desktop file index (Phase 1): content search, date filters and speed. Run after the status bar shows the index is ready. Expectations reflect the developer laptop's files (Nov 2026).",
+  "timeoutSec": 120,
+  "cases": [
+    { "id": "added-today", "query": "show files I added today", "expect": { "all": ["added today"], "minFiles": 1, "maxSeconds": 10 } },
+    { "id": "about-accessibility", "query": "find documents about accessibility", "expect": { "all": ["about \"accessibility\""], "minFiles": 1, "maxSeconds": 10 } },
+    { "id": "mentioning-invoice", "query": "find files mentioning invoice", "expect": { "all": ["invoice"], "minFiles": 1, "maxSeconds": 10 } },
+    { "id": "pdfs-this-week", "query": "how many pdfs did I download this week", "expect": { "all": ["\\d+", "pdf", "this week"], "maxSeconds": 10 } },
+    { "id": "offer-letter-missing", "query": "find my offer letter", "expect": { "any": ["couldn't find"], "none": ["found \\d+"], "maxSeconds": 10 } },
+    { "id": "resume-fast", "query": "find my resume", "expect": { "any": ["resume", "\\bcv\\b"], "minFiles": 1, "maxSeconds": 5 } },
+    { "id": "aadhaar-fast", "query": "give me my adhar", "expect": { "any": ["adhar", "aadhaar"], "minFiles": 1, "maxSeconds": 5 } }
+  ]
+}

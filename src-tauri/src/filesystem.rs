@@ -18,6 +18,12 @@ pub struct DiscoveredFile {
     pub file_type: String,
     #[serde(default)]
     pub mime_type: Option<String>,
+    /// Text around the match when the file was found by its contents (index search).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub snippet: Option<String>,
+    /// Where the query matched: "name", "folder" or "content".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub match_in: Option<String>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
@@ -413,6 +419,7 @@ pub fn search_files_live(
     scope_path: Option<String>,
     sort_by: Option<String>,
     sort_order: Option<String>,
+    content: Option<bool>,
 ) -> Vec<DiscoveredFile> {
     #[cfg(target_os = "android")]
     {
@@ -440,6 +447,26 @@ pub fn search_files_live(
 
     #[cfg(not(target_os = "android"))]
     {
+    // Persistent index (names + contents, kept current by a file watcher). Falls back to walking the
+    // disk below until the first index crawl has finished.
+    let index_params = crate::index::SearchParams {
+        query: query.clone(),
+        extension: extension.clone(),
+        file_types: file_types.clone(),
+        created_after_ms: created_after.as_deref().and_then(parse_iso_or_millis),
+        created_before_ms: created_before.as_deref().and_then(parse_iso_or_millis),
+        modified_after_ms: modified_after.as_deref().and_then(parse_iso_or_millis),
+        modified_before_ms: modified_before.as_deref().and_then(parse_iso_or_millis),
+        scope: scope_path.clone(),
+        limit: limit.unwrap_or(200),
+        sort_by: sort_by.clone(),
+        sort_asc: sort_order.as_deref().map(|o| o.eq_ignore_ascii_case("asc")).unwrap_or(false),
+        content: content.unwrap_or(false),
+    };
+    if let Some(hits) = crate::index::try_search(&index_params) {
+        return hits;
+    }
+
     let requested_limit = limit.unwrap_or(200);
     let is_sorting = sort_by.is_some();
     // When sorting, collect candidates up to 5000 files so top largest/newest are found across directories
@@ -625,7 +652,7 @@ fn name_tokens(text: &str) -> Vec<String> {
 
 /// True when a file name looks like a resume: "resume", "CV", "curriculum", or a "Res" token as in
 /// "Jagadeesh_Developer_Res.pdf".
-fn looks_like_resume(file_name: &str) -> bool {
+pub fn looks_like_resume(file_name: &str) -> bool {
     let lower = file_name.to_lowercase();
     lower.contains("resume") || name_tokens(file_name).iter().any(|t| t == "cv" || t == "res" || t == "curriculum")
 }
@@ -880,6 +907,8 @@ fn search_files_recursive(
                 accessed_at: accessed.and_then(system_time_to_rfc3339),
                 file_type,
                 mime_type: None,
+                snippet: None,
+                match_in: None,
             });
         }
     }
@@ -943,6 +972,8 @@ pub fn get_file_metadata(path: String) -> Result<DiscoveredFile, String> {
         accessed_at: accessed.and_then(system_time_to_rfc3339),
         file_type,
         mime_type: None,
+        snippet: None,
+        match_in: None,
     })
 }
 
@@ -968,6 +999,7 @@ pub fn scan_user_folders(dir_path: String, max_folders: usize) -> Vec<Discovered
     folders
 }
 
+#[cfg(target_os = "android")]
 pub fn extract_pdf_text(data: &[u8], max_bytes: usize) -> String {
     let mut text_parts = Vec::new();
     let mut in_parentheses = false;
@@ -1017,30 +1049,8 @@ pub fn extract_pdf_text(data: &[u8], max_bytes: usize) -> String {
         }
     }
 
-    let extracted = text_parts.join(" ");
-    if extracted.len() >= 30 {
-        extracted
-    } else {
-        // Look for readable metadata like /Title, /Author, etc.
-        let lossy = String::from_utf8_lossy(data);
-        let mut meta_hints = Vec::new();
-        for key in &["/Title", "/Author", "/Subject", "/Creator", "/Producer"] {
-            if let Some(pos) = lossy.find(key) {
-                let snippet = &lossy[pos..std::cmp::min(pos + 120, lossy.len())];
-                if let Some(end) = snippet.find('\n') {
-                    meta_hints.push(snippet[..end].trim().to_string());
-                }
-            }
-        }
-
-        if !meta_hints.is_empty() {
-            format!("PDF Document ({})\n[Note: Core body text is encoded in compressed streams. Use system viewer for full visual rendering]", meta_hints.join(", "))
-        } else if !extracted.is_empty() {
-            extracted
-        } else {
-            "PDF Document: Core body text is encoded in compressed streams or scanned pages. Open with system viewer for full visual rendering.".to_string()
-        }
-    }
+    // Only text actually found in the file; an empty result is reported as "no readable text".
+    text_parts.join(" ")
 }
 
 #[tauri::command(async)]
@@ -1056,8 +1066,17 @@ pub fn read_file_content(path: String, max_bytes: usize) -> Result<String, Strin
     }
 
     let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+    #[cfg(not(target_os = "android"))]
+    if matches!(ext.as_str(), "pdf" | "docx" | "xlsx" | "pptx" | "odt" | "ods" | "odp") {
+        // Real text extraction. When a document has no extractable text (e.g. a scanned PDF) say so
+        // instead of returning placeholder text that would then be summarized as if it were content.
+        return match crate::extract::extract_text(&p, max_bytes)? {
+            Some(text) => Ok(text),
+            None => Err("No readable text was found in this document (it may be a scanned image or too large).".to_string()),
+        };
+    }
+    #[cfg(target_os = "android")]
     if ext == "pdf" {
-        // PDF text needs the whole file; refuse very large ones instead of loading them into memory.
         const MAX_PDF_BYTES: u64 = 64 * 1024 * 1024;
         let size = fs::metadata(&p).map(|m| m.len()).unwrap_or(0);
         if size > MAX_PDF_BYTES {

@@ -112,6 +112,14 @@ export const FileResultCard: React.FC<FileResultCardProps> = ({ file }) => {
               <span>Modified {formatDate(file.modifiedAt)}</span>
             </div>
 
+            {/* Why this file matched, when it was found by its contents */}
+            {file.matchIn === 'content' && file.snippet && (
+              <p className="text-[12px] leading-snug text-[var(--text-muted)] m-0 line-clamp-3" title="Matching text from this file">
+                <span className="font-medium text-[var(--text-main)]">Contains: </span>
+                {file.snippet}
+              </p>
+            )}
+
             {/* Badges for special classifications */}
             <div className="flex flex-wrap gap-1 pt-0.5">
               {file.isScreenRecording && (

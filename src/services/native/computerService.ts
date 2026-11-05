@@ -44,6 +44,8 @@ interface NativeDiscoveredFile {
   accessed_at?: string;
   file_type: string;
   mime_type?: string;
+  snippet?: string;
+  match_in?: 'name' | 'folder' | 'content';
 }
 
 interface NativeDiscoveredFolder {
@@ -139,6 +141,8 @@ export class ComputerService {
     scopePath?: string;
     sortBy?: string;
     sortOrder?: string;
+    /** Search inside file contents as well as names ("documents about X"). */
+    content?: boolean;
   }): Promise<IndexedFile[]> {
     trace('[Foundry] searchFilesLive called with args:', JSON.stringify(args));
 
@@ -153,6 +157,7 @@ export class ComputerService {
     if (args.query) tauriArgs.query = args.query;
     if (args.scopePath) tauriArgs.scopePath = args.scopePath;
     if (args.sortBy) tauriArgs.sortBy = args.sortBy;
+    if (args.content) tauriArgs.content = true;
     if (args.sortOrder) tauriArgs.sortOrder = args.sortOrder;
     tauriArgs.limit = args.limit || 200;
 
@@ -193,6 +198,8 @@ export class ComputerService {
         status: 'indexed' as const,
         qualityScore,
         isScreenRecording,
+        snippet: f.snippet,
+        matchIn: f.match_in,
       };
     });
   }

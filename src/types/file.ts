@@ -25,6 +25,10 @@ export interface IndexedFile {
   status: 'indexed' | 'modified' | 'unreadable';
   qualityScore?: number; // Visual / resolution score for image ranking
   isScreenRecording?: boolean;
+  /** Text around the match when the file was found by its contents. */
+  snippet?: string;
+  /** Where the search matched: file name, folder path or file contents. */
+  matchIn?: 'name' | 'folder' | 'content';
 }
 
 export interface IndexedFolder {

@@ -72,7 +72,7 @@ fn extension_of(path: &Path) -> String {
     path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase()
 }
 
-fn is_secret_file(path: &Path) -> bool {
+pub fn is_secret_file(path: &Path) -> bool {
     let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("").to_lowercase();
     SECRET_FILE_NAMES.contains(&name.as_str()) || SECRET_EXTENSIONS.contains(&extension_of(path).as_str())
 }

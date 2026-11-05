@@ -31,6 +31,21 @@ node scripts/e2e-chat.mjs --port 9222 --suite tests/e2e/desktop-suite.json --out
 
 Use the release build: the content security policy is only enforced there, so running it in dev mode would hide problems.
 
+### File index checks (desktop)
+
+Wait until the status bar shows "… files indexed · up to date", then run:
+
+```powershell
+node scripts/e2e-chat.mjs --port 9333 --suite tests/e2e/desktop-index-suite.json
+node scripts/e2e-chat.mjs --port 9333 --suite tests/e2e/desktop-apps-suite.json
+```
+
+Real-data index diagnostic. It indexes this machine's folders into a throwaway database, then prints timings and sample results:
+
+```powershell
+cd src-tauri; cargo test --release --lib diagnostic_index_real_folders -- --ignored --nocapture
+```
+
 ### Android phone (USB or Wi-Fi debugging)
 
 ```powershell

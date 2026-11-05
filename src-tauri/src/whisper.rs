@@ -141,6 +141,8 @@ pub async fn transcribe_audio(wav_bytes: Vec<u8>) -> Result<String, String> {
         return Err("Audio payload is empty".to_string());
     }
 
+    #[cfg(not(target_os = "android"))]
+    let _foreground = crate::index::foreground_work();
     let port = ensure_whisper_server_running()?;
 
     let boundary = "----FoundryWhisperBoundary7f";

@@ -2,6 +2,10 @@
 
 pub mod access_policy;
 pub mod fuzzy;
+#[cfg(not(target_os = "android"))]
+pub mod extract;
+#[cfg(not(target_os = "android"))]
+pub mod index;
 pub mod filesystem;
 pub mod system;
 pub mod applications;
@@ -131,6 +135,31 @@ fn android_local_ai_test_inference(_prompt: String) -> Result<String, String> {
     Err("On-device Android AI is only available in the Android application".to_string())
 }
 
+// File index commands (desktop). On Android, file search goes through the Storage Access Framework.
+#[cfg(not(target_os = "android"))]
+#[tauri::command(async)]
+fn index_status() -> index::IndexStatus {
+    index::index_status()
+}
+
+#[cfg(not(target_os = "android"))]
+#[tauri::command]
+fn index_rebuild() -> index::IndexStatus {
+    index::index_rebuild()
+}
+
+#[cfg(target_os = "android")]
+#[tauri::command]
+fn index_status() -> serde_json::Value {
+    serde_json::json!({ "state": "unavailable", "ready": false })
+}
+
+#[cfg(target_os = "android")]
+#[tauri::command]
+fn index_rebuild() -> serde_json::Value {
+    serde_json::json!({ "state": "unavailable", "ready": false })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -144,6 +173,8 @@ pub fn run() {
             }
             #[cfg(not(target_os = "android"))]
             desktop_ai::autostart_if_installed();
+            #[cfg(not(target_os = "android"))]
+            index::start_background();
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -183,6 +214,8 @@ pub fn run() {
             desktop_ai::desktop_ai_cancel_download,
             desktop_ai::desktop_ai_start_server,
             desktop_ai::desktop_ai_delete_model,
+            index_status,
+            index_rebuild,
             oauth::wait_for_oauth_callback,
             oauth::open_browser_url,
             security::secure_save_token,
@@ -195,6 +228,8 @@ pub fn run() {
             if let tauri::RunEvent::Exit = event {
                 desktop_ai::stop_server();
                 whisper::stop_server();
+                #[cfg(not(target_os = "android"))]
+                index::stop_background();
             }
         });
 }
@@ -303,13 +338,13 @@ mod tests {
     #[ignore]
     fn diagnostic_search_resume() {
         for q in ["resume", "cv", "adhar", "passport"] {
-            let r = search_files_live(None, None, None, None, None, None, Some(q.to_string()), Some(10), None, None, None);
+            let r = search_files_live(None, None, None, None, None, None, Some(q.to_string()), Some(10), None, None, None, None);
             println!("query '{}' -> {} results", q, r.len());
             for f in r.iter().take(6) {
                 println!("   {} | {} | {}", f.name, f.file_type, f.path);
             }
         }
-        let pdfs = search_files_live(None, None, None, None, None, Some("pdf".to_string()), None, Some(10000), None, None, None);
+        let pdfs = search_files_live(None, None, None, None, None, Some("pdf".to_string()), None, Some(10000), None, None, None, None);
         println!("pdf count -> {}", pdfs.len());
         for q in ["whatapp", "watsapp", "whatsapp", "chorme", "calcualtor", "notpad", "teams", "spotfy"] {
             let r = resolve_installed_application(q.to_string()).unwrap();
@@ -348,6 +383,7 @@ mod tests {
             None,
             Some("size".to_string()),
             Some("desc".to_string()),
+            None,
         );
         println!("Top largest files: {:?}", results);
         assert!(!results.is_empty(), "Must discover files");
