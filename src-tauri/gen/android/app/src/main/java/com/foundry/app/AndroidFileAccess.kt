@@ -61,6 +61,41 @@ object AndroidFileAccess {
     }
   }
 
+  /** Date range filter on a file's last-modified time (Android exposes no reliable creation time). */
+  private class TimeWindow(val after: Long?, val before: Long?) {
+    fun contains(ms: Long?): Boolean {
+      if (after == null && before == null) return true
+      if (ms == null) return false
+      if (after != null && ms < after) return false
+      if (before != null && ms > before) return false
+      return true
+    }
+  }
+
+  private fun JSONObject.optRawString(key: String): String? {
+    if (isNull(key)) return null
+    val v = optString(key, "").trim()
+    return if (v.isEmpty() || v.equals("null", ignoreCase = true)) null else v
+  }
+
+  /** Parse "2026-11-05T00:00:00.000Z" (JavaScript toISOString), RFC 3339 offsets, or epoch millis. */
+  private fun parseTimestamp(value: String?): Long? {
+    if (value == null) return null
+    value.toLongOrNull()?.let { return it }
+    val patterns = listOf("yyyy-MM-dd'T'HH:mm:ss.SSSXXX", "yyyy-MM-dd'T'HH:mm:ssXXX", "yyyy-MM-dd'T'HH:mm:ss.SSSX", "yyyy-MM-dd'T'HH:mm:ssX")
+    for (pattern in patterns) {
+      try {
+        val format = SimpleDateFormat(pattern, Locale.US).apply { isLenient = false }
+        return format.parse(value)?.time
+      } catch (_: Exception) {
+      }
+    }
+    return null
+  }
+
+  /** MediaStore dates are in seconds, DocumentsContract dates in milliseconds. */
+  private fun toMillis(raw: Long): Long = if (raw in 1 until 100_000_000_000L) raw * 1000 else raw
+
   private fun JSONObject.optStringSafe(key: String): String {
     if (isNull(key)) return ""
     val v = optString(key, "").trim()
@@ -79,15 +114,19 @@ object AndroidFileAccess {
     val limit = if (request.isNull("limit")) 200 else request.optInt("limit", 200).coerceIn(1, 10000)
     val sortBy = request.optStringSafe("sortBy")
     val sortOrder = request.optStringSafe("sortOrder")
+    // "Added" and "modified" both use the last-modified time: Android's document APIs expose no creation date.
+    val afters = listOf("createdAfter", "modifiedAfter").mapNotNull { parseTimestamp(request.optRawString(it)) }
+    val befores = listOf("createdBefore", "modifiedBefore").mapNotNull { parseTimestamp(request.optRawString(it)) }
+    val window = TimeWindow(afters.maxOrNull(), befores.minOrNull())
 
     val tree = persistedTreeUri(context)
     if (tree != null) {
-      walkTree(context, Uri.parse(tree), results, query, extension, requestedTypes, limit)
+      walkTree(context, Uri.parse(tree), results, query, extension, requestedTypes, limit, window)
     } else {
       Log.w("Foundry", "[Foundry][AndroidFiles] No persisted tree URI available for walkTree")
     }
 
-    appendMediaStore(context, results, query, extension, requestedTypes, limit)
+    appendMediaStore(context, results, query, extension, requestedTypes, limit, window)
     Log.i("Foundry", "[Foundry][AndroidFiles] Results before sort/limit: ${results.length()}")
 
     // Sort results if requested
@@ -100,7 +139,7 @@ object AndroidFileAccess {
       list.sortWith(Comparator { a, b ->
         val cmp = when (sortBy) {
           "size" -> a.optLong("size", 0L).compareTo(b.optLong("size", 0L))
-          "modified" -> a.optString("modified_at", "").compareTo(b.optString("modified_at", ""))
+          "modified", "created" -> a.optString("modified_at", "").compareTo(b.optString("modified_at", ""))
           "name" -> a.optString("name", "").compareTo(b.optString("name", ""), ignoreCase = true)
           else -> 0
         }
@@ -200,7 +239,7 @@ object AndroidFileAccess {
     }
   }
 
-  private fun walkTree(context: Context, treeUri: Uri, results: JSONArray, query: String, extension: String, requestedTypes: Set<String>, limit: Int) {
+  private fun walkTree(context: Context, treeUri: Uri, results: JSONArray, query: String, extension: String, requestedTypes: Set<String>, limit: Int, window: TimeWindow) {
     if (results.length() >= limit) return
     try {
       val rootDocumentId = DocumentsContract.getTreeDocumentId(treeUri)
@@ -224,8 +263,8 @@ object AndroidFileAccess {
           val mime = cursor.getString(mimeCol) ?: "application/octet-stream"
           val childUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, documentId)
           if (mime == DocumentsContract.Document.MIME_TYPE_DIR) {
-            walkDirectory(context, treeUri, documentId, results, query, extension, requestedTypes, limit)
-          } else if (matches(name, mime, query, extension, requestedTypes)) {
+            walkDirectory(context, treeUri, documentId, results, query, extension, requestedTypes, limit, window)
+          } else if (matches(name, mime, query, extension, requestedTypes) && window.contains(lastModified(cursor))) {
             results.put(fileJson(childUri.toString(), cursor, extensionFor(name)))
             Log.i("Foundry", "[Foundry][AndroidFiles] Matched: $name ($childUri)")
           }
@@ -236,7 +275,7 @@ object AndroidFileAccess {
     }
   }
 
-  private fun walkDirectory(context: Context, treeUri: Uri, parentId: String, results: JSONArray, query: String, extension: String, requestedTypes: Set<String>, limit: Int) {
+  private fun walkDirectory(context: Context, treeUri: Uri, parentId: String, results: JSONArray, query: String, extension: String, requestedTypes: Set<String>, limit: Int, window: TimeWindow) {
     if (results.length() >= limit) return
     val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentId)
     context.contentResolver.query(childrenUri, arrayOf(
@@ -256,12 +295,17 @@ object AndroidFileAccess {
         val mime = cursor.getString(mimeCol) ?: "application/octet-stream"
         val childUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, documentId)
         if (mime == DocumentsContract.Document.MIME_TYPE_DIR) {
-          walkDirectory(context, treeUri, documentId, results, query, extension, requestedTypes, limit)
-        } else if (matches(name, mime, query, extension, requestedTypes)) {
+          walkDirectory(context, treeUri, documentId, results, query, extension, requestedTypes, limit, window)
+        } else if (matches(name, mime, query, extension, requestedTypes) && window.contains(lastModified(cursor))) {
           results.put(fileJson(childUri.toString(), cursor, extensionFor(name)))
         }
       }
     }
+  }
+
+  private fun lastModified(cursor: Cursor): Long? {
+    val col = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_LAST_MODIFIED)
+    return if (col < 0 || cursor.isNull(col)) null else toMillis(cursor.getLong(col))
   }
 
   private fun classifyType(ext: String, mime: String): String {
@@ -289,7 +333,7 @@ object AndroidFileAccess {
     return true
   }
 
-  private fun appendMediaStore(context: Context, results: JSONArray, query: String, extension: String, requestedTypes: Set<String>, limit: Int) {
+  private fun appendMediaStore(context: Context, results: JSONArray, query: String, extension: String, requestedTypes: Set<String>, limit: Int, window: TimeWindow) {
     if (results.length() >= limit && requestedTypes.isNotEmpty() && requestedTypes.none { it in setOf("image", "video", "audio") }) return
     val collection = MediaStore.Files.getContentUri("external")
     context.contentResolver.query(collection, arrayOf(
@@ -313,6 +357,7 @@ object AndroidFileAccess {
         if (extension.isNotBlank() && ext != extension) continue
         if (query.isNotBlank() && !name.lowercase(Locale.ROOT).contains(query)) continue
         if (requestedTypes.isNotEmpty() && mediaType !in requestedTypes) continue
+        if (!window.contains(if (cursor.isNull(4)) null else toMillis(cursor.getLong(4)))) continue
         val uri = Uri.withAppendedPath(collection, cursor.getLong(0).toString())
         results.put(fileJson(uri.toString(), cursor, ext))
       }
@@ -332,7 +377,7 @@ object AndroidFileAccess {
     val name = cursor.getString(nameIndex) ?: uri.substringAfterLast('/')
     val mime = cursor.getString(mimeIndex) ?: "application/octet-stream"
     val size = if (cursor.isNull(sizeIndex)) 0L else cursor.getLong(sizeIndex)
-    val modified = if (cursor.isNull(modIndex)) null else iso(cursor.getLong(modIndex))
+    val modified = if (cursor.isNull(modIndex)) null else iso(toMillis(cursor.getLong(modIndex)))
     return JSONObject().apply {
       put("path", uri)
       put("name", name)

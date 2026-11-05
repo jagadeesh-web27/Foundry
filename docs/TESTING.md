@@ -57,6 +57,12 @@ node scripts/e2e-chat.mjs --port 9225 --suite tests/e2e/phone-suite.json --out a
 
 The phone suite expects the test files in `/sdcard/FoundryTestData`. They are created by `provisionPhoneFixtures` in `tests/android/android-test-utils.ts`.
 
+The date checks also need a file dated today. Create it on the day of the run:
+
+```powershell
+adb shell "echo test > /sdcard/FoundryTestData/test-today-note.txt"
+```
+
 Do not run `tests/android/android-physical-device.test.ts` casually. If the app isn't running, it reinstalls the APK and runs `pm clear`, which deletes the downloaded AI model.
 
 ## 3. Reports

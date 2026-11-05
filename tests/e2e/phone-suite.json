@@ -1,5 +1,5 @@
 {
-  "description": "Physical Android phone. Files come from the FoundryTestData fixtures provisioned by tests/android/android-test-utils.ts (test-resume.pdf, test-document.pdf, test-document.docx, test-spreadsheet.xlsx, test-notes.txt, test-image.jpg).",
+  "description": "Physical Android phone. Files come from the FoundryTestData fixtures provisioned by tests/android/android-test-utils.ts (test-resume.pdf, test-document.pdf, test-document.docx, test-spreadsheet.xlsx, test-notes.txt, test-image.jpg). test-today-note.txt is created on the day of the run (see docs/TESTING.md) to check date filters.",
   "timeoutSec": 240,
   "cases": [
     {
@@ -126,6 +126,43 @@
           "found .*aadhaar",
           "found .*passport"
         ]
+      }
+    },
+    {
+      "id": "added-today",
+      "query": "show files I added today",
+      "expect": {
+        "all": [
+          "test-today-note"
+        ],
+        "none": [
+          "test-resume",
+          "test-document"
+        ],
+        "minFiles": 1
+      }
+    },
+    {
+      "id": "pdfs-this-week",
+      "query": "how many pdfs did I download this week",
+      "expect": {
+        "all": [
+          "\\b0\\b"
+        ]
+      }
+    },
+    {
+      "id": "apps-not-on-phone",
+      "query": "open calculator",
+      "expect": {
+        "any": [
+          "not available on Android",
+          "home screen"
+        ],
+        "none": [
+          "Confirm & Launch"
+        ],
+        "maxSeconds": 10
       }
     }
   ]
