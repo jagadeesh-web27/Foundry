@@ -100,8 +100,11 @@
       "expect": {
         "none": [
           "components, hooks",
-          "could not complete"
-        ]
+          "could not complete",
+          "could not extract",
+          "none of the top"
+        ],
+        "minFiles": 1
       }
     },
     {

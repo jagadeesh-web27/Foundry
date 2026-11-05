@@ -61,11 +61,15 @@ export class AIService {
   }
 
   private async performCheckStatus(): Promise<AIProviderStatus> {
+    // Keep the configured provider's own report (e.g. "model loading", "model not downloaded") so callers
+    // can react to it; the generic "unreachable" status below is only for when nothing better is known.
+    let primary: AIProviderStatus | null = null;
     try {
       const status = await this.provider.checkStatus(this.settings.model, this.settings.embeddingModel);
       if (status.isAvailable) {
         return status;
       }
+      primary = status;
     } catch {
       // Primary check failed, probe fallback candidates
     }
@@ -128,14 +132,16 @@ export class AIService {
       // All fallback candidates failed
     }
 
-    return {
-      isAvailable: false,
-      providerType: this.settings.provider,
-      endpoint: this.settings.endpoint,
-      modelName: this.settings.model,
-      embeddingModel: this.settings.embeddingModel,
-      errorMessage: 'All AI runtime checks timed out or were unreachable',
-    };
+    return (
+      primary ?? {
+        isAvailable: false,
+        providerType: this.settings.provider,
+        endpoint: this.settings.endpoint,
+        modelName: this.settings.model,
+        embeddingModel: this.settings.embeddingModel,
+        errorMessage: 'All AI runtime checks timed out or were unreachable',
+      }
+    );
   }
 
   async generateRAGAnswer(

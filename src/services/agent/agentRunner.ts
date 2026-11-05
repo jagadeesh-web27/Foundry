@@ -71,7 +71,14 @@ export class AgentRunner {
     // If aiService is provided, verify availability if not already set
     if (aiService && !isAiAvailable) {
       try {
-        const status = await aiService.checkStatus();
+        let status = await aiService.checkStatus(true);
+        // The on-device model is installed but still loading (typically right after launch): wait for it
+        // rather than answering "AI not ready" to a question it will be able to answer in a few seconds.
+        const loadingDeadline = Date.now() + 90_000;
+        while (!status.isAvailable && status.state === 'MODEL_LOADING' && Date.now() < loadingDeadline) {
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+          status = await aiService.checkStatus(true);
+        }
         isAiAvailable = status.isAvailable;
       } catch {
         isAiAvailable = false;
