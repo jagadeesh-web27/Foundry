@@ -131,6 +131,8 @@ pub struct ApplicationDetails {
 
 static APP_CACHE: std::sync::Mutex<Option<(std::time::Instant, Vec<DiscoveredApplication>)>> = std::sync::Mutex::new(None);
 
+// On Android the function returns early with the phone's launcher apps; the desktop code below is then unreachable.
+#[cfg_attr(target_os = "android", allow(unreachable_code, unused_mut, unused_variables))]
 pub fn discover_installed_applications_internal() -> Vec<DiscoveredApplication> {
     if let Ok(guard) = APP_CACHE.lock() {
         if let Some((instant, ref apps)) = *guard {
@@ -138,6 +140,15 @@ pub fn discover_installed_applications_internal() -> Vec<DiscoveredApplication> 
                 return apps.clone();
             }
         }
+    }
+
+    #[cfg(target_os = "android")]
+    {
+        let apps = crate::android_apps::list_launchable();
+        if let Ok(mut guard) = APP_CACHE.lock() {
+            *guard = Some((std::time::Instant::now(), apps.clone()));
+        }
+        return apps;
     }
 
     let mut apps: Vec<DiscoveredApplication> = Vec::new();
@@ -539,7 +550,8 @@ pub fn resolve_installed_application(query: String) -> Result<ResolvedApplicatio
             best_app.display_name, best_app.source, score
         );
 
-        let running = check_app_is_running(best_app);
+        // Android only lets an app see its own processes, so "is it running" is not knowable there.
+        let running = !cfg!(target_os = "android") && check_app_is_running(best_app);
         let launch_target = if let Some(ref exec) = best_app.executable_path {
             exec.clone()
         } else {
@@ -566,6 +578,7 @@ pub fn resolve_installed_application(query: String) -> Result<ResolvedApplicatio
 }
 
 #[tauri::command]
+#[cfg_attr(target_os = "android", allow(unreachable_code, unused_variables))]
 pub fn launch_application_target(target_path: String) -> Result<bool, String> {
     println!("[FOUNDry] Launch method executing for target: {}", target_path);
 
@@ -575,6 +588,16 @@ pub fn launch_application_target(target_path: String) -> Result<bool, String> {
     // The webview may not launch arbitrary programs: the target must come from the installed-app resolver.
     if !is_builtin && !crate::access_policy::is_registered_launch_target(&target_path) {
         return Err("This application was not found among installed applications, so Foundry will not launch it.".to_string());
+    }
+
+    // Android: the target is a package name from the launcher list.
+    #[cfg(target_os = "android")]
+    {
+        return if crate::android_apps::launch(&target_path)? {
+            Ok(true)
+        } else {
+            Err("Android could not open this app.".to_string())
+        };
     }
 
     if target_path.starts_with("shell:AppsFolder\\") {

@@ -443,7 +443,7 @@ export const computerTools = {
         return {
           installed: false,
           appName: resolved.appName || appQuery,
-          message: `The ${resolved.appName || appQuery} application is not installed or could not be found on this computer.`,
+          message: `The ${resolved.appName || appQuery} application is not installed or could not be found on this device.`,
         };
       }
 

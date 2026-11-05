@@ -10,6 +10,7 @@ static mut SAVED_CONTEXT: jobject = std::ptr::null_mut();
 static mut CLASS_LOCAL_AI: jobject = std::ptr::null_mut();
 static mut CLASS_FILE_ACCESS: jobject = std::ptr::null_mut();
 static mut CLASS_APK_INSTALLER: jobject = std::ptr::null_mut();
+static mut CLASS_APPS: jobject = std::ptr::null_mut();
 
 #[no_mangle]
 pub unsafe extern "C" fn Java_com_foundry_app_MainActivity_initNdkContext(
@@ -56,6 +57,7 @@ pub unsafe extern "C" fn Java_com_foundry_app_MainActivity_initNdkContext(
     CLASS_LOCAL_AI = cache_class("com/foundry/app/AndroidLocalAI");
     CLASS_FILE_ACCESS = cache_class("com/foundry/app/AndroidFileAccess");
     CLASS_APK_INSTALLER = cache_class("com/foundry/app/AndroidApkInstaller");
+    CLASS_APPS = cache_class("com/foundry/app/AndroidApps");
 
     // Also initialize ndk_context crate safely if not already initialized
     let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -76,6 +78,10 @@ pub fn get_class_file_access() -> jobject {
 
 pub fn get_class_apk_installer() -> jobject {
     unsafe { CLASS_APK_INSTALLER }
+}
+
+pub fn get_class_apps() -> jobject {
+    unsafe { CLASS_APPS }
 }
 
 pub fn with_android_context<F, R>(operation: F) -> Result<R, String>

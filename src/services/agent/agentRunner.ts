@@ -46,19 +46,8 @@ export class AgentRunner {
   ): Promise<AgentResponse> {
     // Clear device / file questions in the native app (desktop and Android) are answered by rules and the
     // real tools: instant, and independent of how well the on-device model follows tool-call formats.
-    const isAndroidUA = typeof navigator !== 'undefined' && /android/i.test(navigator.userAgent);
     if (computerService.isTauriEnvironment() && !looksLikeGeneralKnowledge(normalizeInput(userInput))) {
       const routed = routeQuery(userInput);
-      // Launching installed applications is only implemented on Windows: say so instead of letting the
-      // model improvise a reply (it answered "Okay." without opening anything).
-      if (isAndroidUA && routed?.kind === 'open_app') {
-        const name = routed.application.replace(/\b\w/g, (c) => c.toUpperCase());
-        return {
-          message: `Opening apps from Foundry is not available on Android yet. You can open ${name} from your home screen or app drawer.`,
-          toolsExecuted: [],
-          plan: { intent: 'OPEN_APP_UNSUPPORTED' },
-        };
-      }
       const route = routed;
       if (route) {
         let aiReady = isAiAvailable;

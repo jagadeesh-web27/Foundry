@@ -19,6 +19,8 @@ mod android_bridge;
 #[cfg(target_os = "android")]
 mod android_files;
 #[cfg(target_os = "android")]
+mod android_apps;
+#[cfg(target_os = "android")]
 mod android_ai;
 #[cfg(target_os = "android")]
 mod android_update;

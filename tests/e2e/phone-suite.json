@@ -152,17 +152,64 @@
       }
     },
     {
-      "id": "apps-not-on-phone",
+      "id": "open-calculator",
       "query": "open calculator",
       "expect": {
-        "any": [
-          "not available on Android",
-          "home screen"
+        "all": [
+          "calculator",
+          "Confirm"
+        ],
+        "maxSeconds": 15
+      }
+    },
+    {
+      "id": "open-whatapp",
+      "query": "open whatapp",
+      "expect": {
+        "all": [
+          "whatsapp",
+          "Confirm"
         ],
         "none": [
-          "Confirm & Launch"
+          "not installed"
         ],
-        "maxSeconds": 10
+        "maxSeconds": 15
+      }
+    },
+    {
+      "id": "open-chorme",
+      "query": "open chorme",
+      "expect": {
+        "all": [
+          "chrome",
+          "Confirm"
+        ],
+        "none": [
+          "not installed"
+        ],
+        "maxSeconds": 15
+      }
+    },
+    {
+      "id": "open-missing-app",
+      "query": "open photoshop",
+      "expect": {
+        "any": [
+          "not installed",
+          "could not be found"
+        ],
+        "maxSeconds": 15
+      }
+    },
+    {
+      "id": "open-spotify",
+      "query": "open spotify",
+      "expect": {
+        "all": [
+          "spotify",
+          "Confirm"
+        ],
+        "maxSeconds": 15
       }
     }
   ]
