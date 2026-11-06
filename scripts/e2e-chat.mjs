@@ -94,12 +94,37 @@ function sendScript(text) {
   })()`;
 }
 
-function check(c, ans) {
+// Clock placeholders for date/time cases, computed inside the app's page so they use the same device
+// clock and time zone as the app: {{weekday}} {{day}} {{month}} {{year}}, {{tomorrowWeekday}}
+// {{tomorrowDay}} {{tomorrowMonth}}, and {{time}} (a regex matching the current minute +/- 1).
+const CLOCK = `(() => {
+  const now = new Date();
+  const f = (d, o) => new Intl.DateTimeFormat('en-US', o).format(d);
+  const tomorrow = new Date(now.getTime() + 864e5);
+  const times = [-60e3, 0, 60e3].map((dt) => {
+    const p = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }).formatToParts(new Date(now.getTime() + dt));
+    const g = (t) => p.find((x) => x.type === t).value;
+    return g('hour') + ':' + g('minute') + '\\\\s?' + g('dayPeriod').toLowerCase()[0] + '\\\\.?m';
+  });
+  return JSON.stringify({
+    weekday: f(now, { weekday: 'long' }), day: f(now, { day: 'numeric' }), month: f(now, { month: 'long' }), year: f(now, { year: 'numeric' }),
+    tomorrowWeekday: f(tomorrow, { weekday: 'long' }), tomorrowDay: f(tomorrow, { day: 'numeric' }), tomorrowMonth: f(tomorrow, { month: 'long' }),
+    time: '\\\\b(?:' + times.join('|') + ')',
+  });
+})()`;
+
+function expand(re, clock) {
+  return clock ? re.replace(/\{\{(\w+)\}\}/g, (m, k) => (k in clock ? clock[k] : m)) : re;
+}
+
+function check(c, ans, clock) {
   const failures = [];
   const t = ans.text;
-  for (const re of c.expect?.all || []) if (!new RegExp(re, 'i').test(t)) failures.push(`missing /${re}/`);
-  if (c.expect?.any?.length && !c.expect.any.some((re) => new RegExp(re, 'i').test(t))) failures.push(`none of ${c.expect.any.map((r) => `/${r}/`).join(' ')}`);
-  for (const re of c.expect?.none || []) if (new RegExp(re, 'i').test(t)) failures.push(`must not match /${re}/`);
+  const x = (re) => expand(re, clock);
+  for (const re of (c.expect?.all || []).map(x)) if (!new RegExp(re, 'i').test(t)) failures.push(`missing /${re}/`);
+  const any = (c.expect?.any || []).map(x);
+  if (any.length && !any.some((re) => new RegExp(re, 'i').test(t))) failures.push(`none of ${any.map((r) => `/${r}/`).join(' ')}`);
+  for (const re of (c.expect?.none || []).map(x)) if (new RegExp(re, 'i').test(t)) failures.push(`must not match /${re}/`);
   if (ans.hooks && c.expect?.minFiles != null && ans.files < c.expect.minFiles) failures.push(`expected >=${c.expect.minFiles} file cards, got ${ans.files}`);
   if (c.expect?.maxSeconds && ans.seconds > c.expect.maxSeconds) failures.push(`took ${ans.seconds}s > ${c.expect.maxSeconds}s`);
   return failures;
@@ -156,7 +181,9 @@ for (const c of suite.cases) {
     await sleep(2000);
   }
   ans.seconds = Math.round((Date.now() - started) / 100) / 10;
-  const failures = ans.timedOut ? ['timed out'] : check(c, ans);
+  const usesClock = JSON.stringify(c.expect || {}).includes('{{');
+  const clock = usesClock ? await evaluate(CLOCK).then((v) => JSON.parse(v)).catch(() => null) : null;
+  const failures = ans.timedOut ? ['timed out'] : check(c, ans, clock);
   const ok = failures.length === 0;
   results.push({ id: c.id, query: c.query, ok, seconds: ans.seconds, tools: ans.tools, files: ans.files, failures, answer: ans.text, send: how });
   const preview = ans.text.replace(/\s+/g, ' ').slice(0, 140);

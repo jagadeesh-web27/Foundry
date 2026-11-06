@@ -5,6 +5,9 @@
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <!-- "All files access": lets Foundry find and read documents (PDF, Word, WhatsApp documents),
+         not only photos and videos. The user grants it on the system settings screen. -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" tools:ignore="ScopedStorage" />
 
     <!-- Lets Foundry see and open the apps in the app drawer ("open WhatsApp"). Launcher apps only. -->
     <queries>

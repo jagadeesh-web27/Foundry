@@ -321,7 +321,9 @@ impl Index {
         let path_str = path.to_string_lossy().to_string();
         let size = meta.len() as i64;
         let modified = system_time_ms(meta.modified());
-        let created = system_time_ms(meta.created());
+        // Android's shared storage (and some Linux file systems) report no creation time: use the
+        // modification time, otherwise every "added today" filter would match nothing there.
+        let created = system_time_ms(meta.created()).or(modified);
         let existing: Option<(i64, i64, Option<i64>)> = conn
             .prepare_cached("SELECT id, size, modified_ms FROM files WHERE path = ?1")
             .and_then(|mut s| s.query_row([&path_str], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).optional())
@@ -798,7 +800,17 @@ fn update_status(f: impl FnOnce(&mut IndexStatus)) {
     }
 }
 
+static DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
+
+/// App data folder for the index (set at startup on Android, where there is no LOCALAPPDATA/HOME).
+pub fn set_data_dir(dir: PathBuf) {
+    let _ = DATA_DIR.set(dir);
+}
+
 pub fn db_path() -> PathBuf {
+    if let Some(dir) = DATA_DIR.get() {
+        return dir.join("index.sqlite");
+    }
     let base = std::env::var_os("LOCALAPPDATA")
         .or_else(|| std::env::var_os("XDG_DATA_HOME"))
         .map(PathBuf::from)
@@ -810,6 +822,11 @@ pub fn db_path() -> PathBuf {
 /// Folders to index: the same user folders and data drives Foundry searches, except the system
 /// drive root (its user folders are already included individually).
 pub fn index_roots() -> Vec<PathBuf> {
+    // Android: the phone's shared storage (Download, Documents, DCIM, Pictures, WhatsApp media under
+    // Android/media...). Android/data and Android/obb are unreadable to apps and skipped by the walk.
+    if cfg!(target_os = "android") {
+        return ["/storage/emulated/0"].iter().map(PathBuf::from).filter(|p| p.is_dir()).collect();
+    }
     let system_drive = std::env::var("SystemDrive").unwrap_or_else(|_| "C:".to_string()).to_lowercase();
     let mut roots: Vec<PathBuf> = crate::filesystem::get_accessible_directories()
         .into_iter()
@@ -941,8 +958,18 @@ fn run_crawl(index: &Index, roots: &[PathBuf]) {
     refresh_counts();
 }
 
-/// Start the index service in the background (desktop app startup).
+static STARTED: AtomicBool = AtomicBool::new(false);
+
+/// Start the index service once (Android calls this whenever file access is confirmed).
+pub fn ensure_started() {
+    start_background();
+}
+
+/// Start the index service in the background (desktop app startup). Later calls do nothing.
 pub fn start_background() {
+    if STARTED.swap(true, Ordering::SeqCst) {
+        return;
+    }
     std::thread::spawn(|| {
         update_status(|s| s.state = "starting".into());
         let index = match Index::open(&db_path()) {
@@ -969,13 +996,22 @@ pub fn start_background() {
         update_status(|s| s.watching = watching);
         run_crawl(index, &roots);
 
+        // Fallback for new/changed files the watcher misses: common on Android, where shared storage
+        // is exposed through FUSE and inotify events over it are unreliable or silently dropped. Without
+        // this, a phone's index would only ever update when the app restarts.
+        let recrawl_every = if watching { Duration::from_secs(600) } else { Duration::from_secs(60) };
+        let mut last_crawl = std::time::Instant::now();
+
         // Text extraction, low priority; also picks up files changed later (via the watcher).
         loop {
             if STOP.load(Ordering::Relaxed) {
                 return;
             }
-            if RECRAWL.swap(false, Ordering::Relaxed) {
-                run_crawl(index, &roots);
+            if RECRAWL.swap(false, Ordering::Relaxed) || last_crawl.elapsed() >= recrawl_every {
+                if !foreground_busy() {
+                    run_crawl(index, &roots);
+                    last_crawl = std::time::Instant::now();
+                }
             }
             if foreground_busy() {
                 std::thread::sleep(Duration::from_millis(300));

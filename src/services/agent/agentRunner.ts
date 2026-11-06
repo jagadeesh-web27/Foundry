@@ -8,6 +8,7 @@ import { dynamicAgent, PendingAction } from './dynamicAgent';
 import { toolRegistry } from '@/services/tools/toolRegistry';
 import { computerService } from '@/services/native/computerService';
 import { routeQuery, runDirectRoute, normalizeInput, looksLikeGeneralKnowledge } from './directRouter';
+import { answerClockQuestion } from './clockAnswers';
 
 // Agent execution trace step
 export interface AgentTraceStep {
@@ -44,6 +45,12 @@ export class AgentRunner {
     aiService?: AIService,
     isAiAvailable: boolean = false
   ): Promise<AgentResponse> {
+    // Date and time come from the device clock, never from the model (which has no clock and guesses).
+    const clockAnswer = answerClockQuestion(userInput);
+    if (clockAnswer) {
+      return { message: clockAnswer, files: [], folders: [], toolsExecuted: [], plan: { intent: 'SYSTEM_DATETIME' } };
+    }
+
     // Clear device / file questions in the native app (desktop and Android) are answered by rules and the
     // real tools: instant, and independent of how well the on-device model follows tool-call formats.
     if (computerService.isTauriEnvironment() && !looksLikeGeneralKnowledge(normalizeInput(userInput))) {
@@ -197,21 +204,11 @@ export class AgentRunner {
       }
 
       // 0.3. SYSTEM DATE & TIME
-      const isDateTimeQuestion =
-        /\b(what('s| is)? (the )?(date|time|day)|what date|what day is (it|today)|today('s)? date)\b/i.test(lowerInput) &&
-        !/\b(file|folder|document|modified|created|worked|opened)\b/i.test(lowerInput);
-
-      if (isDateTimeQuestion) {
-        const now = new Date();
-        const dateStr = now.toLocaleDateString('en-US', {
-          weekday: 'long',
-          year: 'numeric',
-          month: 'long',
-          day: 'numeric',
-        });
-        const timeStr = now.toLocaleTimeString('en-US');
+      // Same answers as the main path, from the device clock.
+      const clockAnswer = answerClockQuestion(userInput);
+      if (clockAnswer) {
         return {
-          message: `Today is **${dateStr}** (${timeStr}).`,
+          message: clockAnswer,
           toolsExecuted: executedTools,
           files: [],
           folders: [],

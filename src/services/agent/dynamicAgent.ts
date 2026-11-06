@@ -7,6 +7,7 @@ import { toolRegistry } from '@/services/tools/toolRegistry';
 import { deviceService } from '@/services/device/deviceService';
 import { computerService } from '@/services/native/computerService';
 import { trace } from '@/services/debug/trace';
+import { clockContext } from './clockAnswers';
 
 export interface ToolCall {
   name: string;
@@ -361,7 +362,10 @@ GUIDELINES:
 
       let systemPrompt: string;
       if (intent === 'general') {
-        systemPrompt = `You are Foundry, an intelligent local AI assistant. Answer the user's question clearly, accurately and briefly (under 150 words unless the user asks for more) in English using your general knowledge.`;
+        // The model has no clock: give it today's date so answers that depend on "now" (ages, "how long
+        // until", "this year's") are computed from the real date instead of the model's training cut-off.
+        systemPrompt = `You are Foundry, an intelligent local AI assistant. Answer the user's question clearly, accurately and briefly (under 150 words unless the user asks for more) in English using your general knowledge.
+${clockContext()} Use it whenever the answer depends on today's date.`;
       } else {
         systemPrompt = `You are Foundry, an intelligent local-first assistant that seamlessly combines general AI reasoning with deep computer and system integration.
 

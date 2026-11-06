@@ -18,10 +18,12 @@ import {
   VolumeX,
   Cpu,
   X,
+  FolderOpen,
 } from 'lucide-react';
 import { useApp } from '@/stores/AppContext';
 import { useVoiceInput } from '@/hooks/useVoiceInput';
 import { useAssistantChat } from '@/hooks/useAssistantChat';
+import { useStorageAccess } from '@/hooks/useStorageAccess';
 import { FirstLaunchScreen } from '@/components/chat/FirstLaunchScreen';
 import { FileResultCard } from '@/components/chat/FileResultCard';
 import { FolderResultCard } from '@/components/chat/FolderResultCard';
@@ -67,6 +69,17 @@ export const MainAssistantPage: React.FC = () => {
   });
   // On touch devices, do not pop the keyboard over the screen as soon as the chat opens.
   const isTouchDevice = typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches;
+
+  // Android: without "All files access", Foundry can only see photos/videos/audio, not documents.
+  const { access: storageAccess, requestAccess: requestStorageAccess } = useStorageAccess();
+  const [storageBannerDismissed, setStorageBannerDismissed] = useState(() => {
+    try {
+      return sessionStorage.getItem('foundry_storage_banner_dismissed') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const needsStorageAccess = storageAccess?.platform === 'android' && !storageAccess.allFiles;
 
   // Assistant Chat Hook
   const {
@@ -231,6 +244,43 @@ export const MainAssistantPage: React.FC = () => {
               }}
               className="touch-target text-amber-400/80 hover:text-amber-300 cursor-pointer shrink-0"
               aria-label="Dismiss AI setup reminder"
+              title="Dismiss"
+            >
+              <X className="w-4 h-4" aria-hidden="true" />
+            </button>
+          </div>
+        )}
+
+        {/* Android: prompt for "All files access" so Foundry can find documents, not only media */}
+        {needsStorageAccess && !storageBannerDismissed && (
+          <div className="bg-amber-500/10 border-b border-amber-500/20 flex items-stretch flex-shrink-0">
+            <button
+              type="button"
+              onClick={requestStorageAccess}
+              className="flex-1 min-w-0 px-3 py-2 flex items-center gap-2 text-left text-[13px] sm:text-xs text-amber-300 hover:bg-amber-500/15 transition-colors cursor-pointer"
+            >
+              <FolderOpen className="w-4 h-4 text-amber-400 shrink-0" aria-hidden="true" />
+              <span className="min-w-0">
+                <strong>Let Foundry see your files</strong>
+                <span className="hidden sm:inline">: without this, only photos, videos and audio can be found, not documents or downloads.</span>
+                <span className="sm:hidden"> to find documents, not only photos</span>
+              </span>
+              <span className="ml-auto text-[12px] sm:text-[11px] font-semibold text-amber-400 bg-amber-500/20 px-2 py-1 rounded-md shrink-0">
+                Allow
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setStorageBannerDismissed(true);
+                try {
+                  sessionStorage.setItem('foundry_storage_banner_dismissed', '1');
+                } catch {
+                  // storage unavailable: dismissed for this session's render only
+                }
+              }}
+              className="touch-target text-amber-400/80 hover:text-amber-300 cursor-pointer shrink-0"
+              aria-label="Dismiss file access reminder"
               title="Dismiss"
             >
               <X className="w-4 h-4" aria-hidden="true" />

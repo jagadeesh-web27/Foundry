@@ -254,6 +254,20 @@ Decisions driven by real-data results, not by tests on made-up files:
 
 **Scope (differs from decision 2 below):** the index covers the same locations the app already searched, meaning the profile folders plus secondary data drives (D:\ etc.). Restricting it to four folders would have lost results the user relies on, such as the Aadhaar and résumé files on D:\. The system drive root is not indexed.
 
+### Phase 1b: Android gets the same index, and correct date/time answers (6 Nov)
+
+**Root cause found:** the phone app could only ever see photos, videos and audio (Android's default scoped-storage permission). Every "find", "count" and "read" question on the phone searched that tiny slice only, re-walking it from scratch each time — no persistent index, no documents, no downloads, no WhatsApp files. This is why it looked "static" and not "dynamic": there was nothing real underneath it.
+
+- **"All files access" permission.** Added (`AndroidStorage.kt`, `android_storage.rs`) with a one-tap in-app banner ("Let Foundry see your files") that opens the system grant screen; `storage_access_status`/`request_storage_access` commands, `useStorageAccess` hook. Desktop is unaffected (always reports granted).
+- **Same SQLite+FTS5 index as desktop, now on Android too.** `index.rs`/`extract.rs`/`filesystem.rs` lost their `#[cfg(not(android))]` gates; `rusqlite`/`pdf-extract`/`zip` now build for the Android target. Index root: `/storage/emulated/0`. Starts once file access is confirmed (`index::ensure_started()`), survives app updates (same on-device DB).
+- **Periodic re-crawl fallback.** Android's shared storage is exposed through FUSE, where inotify events are unreliable or silently dropped — the live watcher reports `watching: false`. Added a 60-second fallback re-crawl when the watcher isn't active (600 s safety net even when it is, in case of missed events on any platform). Verified live: a file created on the phone was found by search ~65 s later with no app restart.
+- **Real text extraction and file opening on Android.** Replaced the old string-literal PDF scraper with the same `pdf-extract`/zip-based extraction desktop uses. `open_file` now opens a found file in the phone's actual viewer app via `FileProvider`, instead of a broken `file://` shell-open.
+- **Verified against the phone's real data, not fixtures:** 1,475 real files indexed (Download, DCIM, Pictures, WhatsApp media…). Search now correctly finds the user's actual résumé (ranked above the test fixture) and a real Aadhaar Card PDF in Downloads that scoped-storage permissions had been hiding.
+
+**Date/time questions answered correctly.** Root cause: "what's the date today" / "what time is it" were classified as general knowledge and sent to the model, whose prompt had no date/time context at all — it had no way to know. New deterministic module `src/services/agent/clockAnswers.ts` answers these (and tomorrow/yesterday, day of week, month/year, time zone, "time in London", "days until Christmas", "what day is 15 August 1947") directly from the device clock, checked before the AI router. The general-knowledge prompt also now receives the current date/time, so date-dependent reasoning ("how old is someone born in 2000") at least starts from the correct year.
+
+**Verification:** desktop E2E 19/19 + 7/7 + 5/5 (31/31); phone E2E 26/26 (fixed 4 stale fixture-era assumptions: exact "2 PDFs"/"0 PDFs this week" now correctly report real counts; "find my aadhaar" now correctly finds the user's real Aadhaar Card PDF instead of the removed test case; the phone's weaker on-device model (Gemma 2B) reliably uses the injected date but is less reliable at arithmetic than the laptop's 3B model — documented, not a regression). Frontend unit tests 203/203 (17 new for clock answers). Rust unit tests 52/52 (0 failed, 2 ignored, unchanged).
+
 ## 8. Decisions (recommendations accepted by the product owner on 30 Oct)
 
 1. **Index storage:** a SQLite index in the Rust backend (recommended — fast, durable, handles large drives) instead of growing IndexedDB in the webview.

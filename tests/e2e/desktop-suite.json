@@ -131,6 +131,109 @@
           "found .*passport"
         ]
       }
+    },
+    {
+      "id": "clock-time-now",
+      "query": "what is the time now",
+      "expect": {
+        "all": [
+          "{{time}}"
+        ],
+        "none": [
+          "don't know",
+          "cannot",
+          "can't",
+          "as an ai"
+        ],
+        "maxSeconds": 8
+      }
+    },
+    {
+      "id": "clock-date-today",
+      "query": "what is the date today",
+      "expect": {
+        "all": [
+          "{{weekday}}",
+          "{{year}}"
+        ],
+        "any": [
+          "{{day}},? {{month}}",
+          "{{month}} {{day}}"
+        ],
+        "maxSeconds": 8
+      }
+    },
+    {
+      "id": "clock-which-day",
+      "query": "which day is today",
+      "expect": {
+        "all": [
+          "{{weekday}}"
+        ],
+        "maxSeconds": 8
+      }
+    },
+    {
+      "id": "clock-tomorrow",
+      "query": "what is tomorrow's date",
+      "expect": {
+        "all": [
+          "{{tomorrowWeekday}}"
+        ],
+        "any": [
+          "{{tomorrowDay}},? {{tomorrowMonth}}",
+          "{{tomorrowMonth}} {{tomorrowDay}}"
+        ],
+        "maxSeconds": 8
+      }
+    },
+    {
+      "id": "clock-date-and-time",
+      "query": "Hey Foundry, what's the date and time right now?",
+      "expect": {
+        "all": [
+          "{{time}}",
+          "{{weekday}}"
+        ],
+        "maxSeconds": 8
+      }
+    },
+    {
+      "id": "clock-city",
+      "query": "what time is it in London",
+      "expect": {
+        "all": [
+          "London",
+          "\\d{1,2}:\\d{2}"
+        ],
+        "maxSeconds": 8
+      }
+    },
+    {
+      "id": "clock-days-until",
+      "query": "how many days until christmas",
+      "expect": {
+        "all": [
+          "\\d+ days? until Christmas",
+          "25 December|December 25"
+        ],
+        "maxSeconds": 8
+      }
+    },
+    {
+      "id": "general-uses-today",
+      "query": "How old is a person born in 2000 this year?",
+      "expect": {
+        "any": [
+          "\\b26\\b",
+          "\\b25 or 26\\b",
+          "\\b25\\b"
+        ],
+        "none": [
+          "2023",
+          "2024"
+        ]
+      }
     }
   ]
 }

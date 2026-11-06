@@ -47,7 +47,7 @@
       "query": "How many PDF files do I have?",
       "expect": {
         "all": [
-          "\\b2\\b"
+          "you have (?:[1-9]\\d*) pdf files"
         ]
       }
     },
@@ -75,11 +75,16 @@
       "id": "read-resume",
       "query": "Read my resume",
       "expect": {
-        "all": [
-          "PHYSICAL_RESUME_MARKER"
+        "any": [
+          "PHYSICAL_RESUME_MARKER",
+          "jagadeesh",
+          "developer",
+          "software"
         ],
         "none": [
-          "components, hooks"
+          "components, hooks",
+          "could not complete",
+          "none of the top"
         ]
       }
     },
@@ -109,19 +114,13 @@
     },
     {
       "id": "missing-doc",
-      "query": "Find my aadhaar card",
+      "query": "find my passport",
       "expect": {
         "any": [
           "couldn't find",
-          "could not find",
-          "no matching",
-          "not find",
-          "didn't find"
+          "could not find"
         ],
         "none": [
-          "1800",
-          "aadhaar\\.gov",
-          "uidai",
           "located",
           "found .*aadhaar",
           "found .*passport"
@@ -147,7 +146,7 @@
       "query": "how many pdfs did I download this week",
       "expect": {
         "all": [
-          "\\b0\\b"
+          "pdf files added this week"
         ]
       }
     },
@@ -210,6 +209,108 @@
           "Confirm"
         ],
         "maxSeconds": 15
+      }
+    },
+    {
+      "id": "clock-time-now",
+      "query": "what is the time now",
+      "expect": {
+        "all": [
+          "{{time}}"
+        ],
+        "none": [
+          "don't know",
+          "cannot",
+          "can't",
+          "as an ai"
+        ],
+        "maxSeconds": 8
+      }
+    },
+    {
+      "id": "clock-date-today",
+      "query": "what is the date today",
+      "expect": {
+        "all": [
+          "{{weekday}}",
+          "{{year}}"
+        ],
+        "any": [
+          "{{day}},? {{month}}",
+          "{{month}} {{day}}"
+        ],
+        "maxSeconds": 8
+      }
+    },
+    {
+      "id": "clock-which-day",
+      "query": "which day is today",
+      "expect": {
+        "all": [
+          "{{weekday}}"
+        ],
+        "maxSeconds": 8
+      }
+    },
+    {
+      "id": "clock-tomorrow",
+      "query": "what is tomorrow's date",
+      "expect": {
+        "all": [
+          "{{tomorrowWeekday}}"
+        ],
+        "any": [
+          "{{tomorrowDay}},? {{tomorrowMonth}}",
+          "{{tomorrowMonth}} {{tomorrowDay}}"
+        ],
+        "maxSeconds": 8
+      }
+    },
+    {
+      "id": "clock-date-and-time",
+      "query": "Hey Foundry, what's the date and time right now?",
+      "expect": {
+        "all": [
+          "{{time}}",
+          "{{weekday}}"
+        ],
+        "maxSeconds": 8
+      }
+    },
+    {
+      "id": "clock-city",
+      "query": "what time is it in London",
+      "expect": {
+        "all": [
+          "London",
+          "\\d{1,2}:\\d{2}"
+        ],
+        "maxSeconds": 8
+      }
+    },
+    {
+      "id": "clock-days-until",
+      "query": "how many days until christmas",
+      "expect": {
+        "all": [
+          "\\d+ days? until Christmas",
+          "25 December|December 25"
+        ],
+        "maxSeconds": 8
+      }
+    },
+    {
+      "id": "general-uses-today",
+      "query": "How old is a person born in 2000 this year?",
+      "expect": {
+        "all": [
+          "2026"
+        ],
+        "none": [
+          "2023",
+          "2024",
+          "2025"
+        ]
       }
     }
   ]

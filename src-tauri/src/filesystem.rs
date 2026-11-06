@@ -421,8 +421,35 @@ pub fn search_files_live(
     sort_order: Option<String>,
     content: Option<bool>,
 ) -> Vec<DiscoveredFile> {
+    // Persistent index (desktop always; Android once "All files access" is granted). Until the first
+    // crawl has finished, or without file access on Android, the search below is used instead.
+    let index_params = crate::index::SearchParams {
+        query: query.clone(),
+        extension: extension.clone(),
+        file_types: file_types.clone(),
+        created_after_ms: created_after.as_deref().and_then(parse_iso_or_millis),
+        created_before_ms: created_before.as_deref().and_then(parse_iso_or_millis),
+        modified_after_ms: modified_after.as_deref().and_then(parse_iso_or_millis),
+        modified_before_ms: modified_before.as_deref().and_then(parse_iso_or_millis),
+        scope: scope_path.clone(),
+        limit: limit.unwrap_or(200),
+        sort_by: sort_by.clone(),
+        sort_asc: sort_order.as_deref().map(|o| o.eq_ignore_ascii_case("asc")).unwrap_or(false),
+        content: content.unwrap_or(false),
+    };
+    #[cfg(target_os = "android")]
+    let use_index = crate::android_storage::has_all_files_access();
+    #[cfg(not(target_os = "android"))]
+    let use_index = true;
+    if use_index {
+        if let Some(hits) = crate::index::try_search(&index_params) {
+            return hits;
+        }
+    }
+
     #[cfg(target_os = "android")]
     {
+        let _ = content;
         let mut request = serde_json::Map::new();
         if let Some(v) = created_after { request.insert("createdAfter".to_string(), serde_json::Value::String(v)); }
         if let Some(v) = created_before { request.insert("createdBefore".to_string(), serde_json::Value::String(v)); }
@@ -447,25 +474,6 @@ pub fn search_files_live(
 
     #[cfg(not(target_os = "android"))]
     {
-    // Persistent index (names + contents, kept current by a file watcher). Falls back to walking the
-    // disk below until the first index crawl has finished.
-    let index_params = crate::index::SearchParams {
-        query: query.clone(),
-        extension: extension.clone(),
-        file_types: file_types.clone(),
-        created_after_ms: created_after.as_deref().and_then(parse_iso_or_millis),
-        created_before_ms: created_before.as_deref().and_then(parse_iso_or_millis),
-        modified_after_ms: modified_after.as_deref().and_then(parse_iso_or_millis),
-        modified_before_ms: modified_before.as_deref().and_then(parse_iso_or_millis),
-        scope: scope_path.clone(),
-        limit: limit.unwrap_or(200),
-        sort_by: sort_by.clone(),
-        sort_asc: sort_order.as_deref().map(|o| o.eq_ignore_ascii_case("asc")).unwrap_or(false),
-        content: content.unwrap_or(false),
-    };
-    if let Some(hits) = crate::index::try_search(&index_params) {
-        return hits;
-    }
 
     let requested_limit = limit.unwrap_or(200);
     let is_sorting = sort_by.is_some();
@@ -999,60 +1007,6 @@ pub fn scan_user_folders(dir_path: String, max_folders: usize) -> Vec<Discovered
     folders
 }
 
-#[cfg(target_os = "android")]
-pub fn extract_pdf_text(data: &[u8], max_bytes: usize) -> String {
-    let mut text_parts = Vec::new();
-    let mut in_parentheses = false;
-    let mut current_literal = Vec::new();
-    let mut is_escaped = false;
-
-    // Scan for text within PDF string literals `(...)`
-    for &byte in data {
-        if text_parts.iter().map(|s: &String| s.len()).sum::<usize>() >= max_bytes {
-            break;
-        }
-
-        if is_escaped {
-            current_literal.push(byte);
-            is_escaped = false;
-            continue;
-        }
-
-        match byte {
-            b'\\' => {
-                if in_parentheses {
-                    is_escaped = true;
-                }
-            }
-            b'(' => {
-                in_parentheses = true;
-                current_literal.clear();
-            }
-            b')' => {
-                if in_parentheses {
-                    in_parentheses = false;
-                    if let Ok(s) = std::str::from_utf8(&current_literal) {
-                        let trimmed = s.trim();
-                        // Filter out binary junk or internal PDF font IDs
-                        if trimmed.len() >= 2 && trimmed.chars().all(|c| c.is_ascii_graphic() || c.is_whitespace()) {
-                            text_parts.push(trimmed.to_string());
-                        }
-                    }
-                    current_literal.clear();
-                }
-            }
-            _ => {
-                if in_parentheses {
-                    current_literal.push(byte);
-                }
-            }
-        }
-    }
-
-    // Only text actually found in the file; an empty result is reported as "no readable text".
-    text_parts.join(" ")
-}
-
 #[tauri::command(async)]
 pub fn read_file_content(path: String, max_bytes: usize) -> Result<String, String> {
     #[cfg(target_os = "android")]
@@ -1066,7 +1020,6 @@ pub fn read_file_content(path: String, max_bytes: usize) -> Result<String, Strin
     }
 
     let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
-    #[cfg(not(target_os = "android"))]
     if matches!(ext.as_str(), "pdf" | "docx" | "xlsx" | "pptx" | "odt" | "ods" | "odp") {
         // Real text extraction. When a document has no extractable text (e.g. a scanned PDF) say so
         // instead of returning placeholder text that would then be summarized as if it were content.
@@ -1075,17 +1028,6 @@ pub fn read_file_content(path: String, max_bytes: usize) -> Result<String, Strin
             None => Err("No readable text was found in this document (it may be a scanned image or too large).".to_string()),
         };
     }
-    #[cfg(target_os = "android")]
-    if ext == "pdf" {
-        const MAX_PDF_BYTES: u64 = 64 * 1024 * 1024;
-        let size = fs::metadata(&p).map(|m| m.len()).unwrap_or(0);
-        if size > MAX_PDF_BYTES {
-            return Err(format!("PDF is too large to read ({} MB).", size / (1024 * 1024)));
-        }
-        let data = fs::read(&p).map_err(|e| format!("Cannot read file: {}", e))?;
-        return Ok(extract_pdf_text(&data, max_bytes));
-    }
-
     // Read only what was asked for, not the whole file.
     use std::io::Read;
     let file = fs::File::open(&p).map_err(|e| format!("Cannot read file: {}", e))?;
@@ -1118,9 +1060,11 @@ pub fn open_file(path: String) -> Result<(), String> {
         return Err("Foundry opens documents and folders, not programs or scripts.".to_string());
     }
     let target = crate::access_policy::display_path(&p);
-    if cfg!(target_os = "android") {
-        return crate::access_policy::shell_open(&format!("file://{target}"));
+    #[cfg(target_os = "android")]
+    {
+        return crate::android_storage::open_path(&target);
     }
+    #[cfg(not(target_os = "android"))]
     crate::access_policy::shell_open(&target)
 }
 

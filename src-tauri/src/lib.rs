@@ -2,9 +2,7 @@
 
 pub mod access_policy;
 pub mod fuzzy;
-#[cfg(not(target_os = "android"))]
 pub mod extract;
-#[cfg(not(target_os = "android"))]
 pub mod index;
 pub mod filesystem;
 pub mod system;
@@ -20,6 +18,8 @@ mod android_bridge;
 mod android_files;
 #[cfg(target_os = "android")]
 mod android_apps;
+#[cfg(target_os = "android")]
+mod android_storage;
 #[cfg(target_os = "android")]
 mod android_ai;
 #[cfg(target_os = "android")]
@@ -137,29 +137,44 @@ fn android_local_ai_test_inference(_prompt: String) -> Result<String, String> {
     Err("On-device Android AI is only available in the Android application".to_string())
 }
 
-// File index commands (desktop). On Android, file search goes through the Storage Access Framework.
-#[cfg(not(target_os = "android"))]
+// File index commands. The desktop indexes the user folders from launch; Android indexes shared
+// storage once the user has granted "All files access" (see storage_access_status).
 #[tauri::command(async)]
 fn index_status() -> index::IndexStatus {
     index::index_status()
 }
 
-#[cfg(not(target_os = "android"))]
 #[tauri::command]
 fn index_rebuild() -> index::IndexStatus {
     index::index_rebuild()
 }
 
-#[cfg(target_os = "android")]
-#[tauri::command]
-fn index_status() -> serde_json::Value {
-    serde_json::json!({ "state": "unavailable", "ready": false })
+/// Whether Foundry can read all of the user's files. Desktop: yes. Android: only with "All files
+/// access"; without it only photos, videos and audio are visible. Starts the Android index as soon as
+/// access is available (the app calls this at launch and whenever it returns to the foreground).
+#[tauri::command(async)]
+fn storage_access_status() -> serde_json::Value {
+    #[cfg(target_os = "android")]
+    {
+        let granted = android_storage::has_all_files_access();
+        if granted {
+            index::ensure_started();
+        }
+        serde_json::json!({ "allFiles": granted, "platform": "android" })
+    }
+    #[cfg(not(target_os = "android"))]
+    serde_json::json!({ "allFiles": true, "platform": "desktop" })
 }
 
-#[cfg(target_os = "android")]
+/// Opens the Android settings screen for "All files access". The user decides there.
 #[tauri::command]
-fn index_rebuild() -> serde_json::Value {
-    serde_json::json!({ "state": "unavailable", "ready": false })
+fn request_storage_access() -> Result<bool, String> {
+    #[cfg(target_os = "android")]
+    {
+        android_storage::request_all_files_access()
+    }
+    #[cfg(not(target_os = "android"))]
+    Ok(true)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -177,6 +192,14 @@ pub fn run() {
             desktop_ai::autostart_if_installed();
             #[cfg(not(target_os = "android"))]
             index::start_background();
+            // Android: the index lives in the app's private storage and starts once file access is granted.
+            #[cfg(target_os = "android")]
+            {
+                use tauri::Manager;
+                if let Ok(dir) = app.path().app_local_data_dir() {
+                    index::set_data_dir(dir);
+                }
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -218,6 +241,8 @@ pub fn run() {
             desktop_ai::desktop_ai_delete_model,
             index_status,
             index_rebuild,
+            storage_access_status,
+            request_storage_access,
             oauth::wait_for_oauth_callback,
             oauth::open_browser_url,
             security::secure_save_token,
@@ -230,7 +255,6 @@ pub fn run() {
             if let tauri::RunEvent::Exit = event {
                 desktop_ai::stop_server();
                 whisper::stop_server();
-                #[cfg(not(target_os = "android"))]
                 index::stop_background();
             }
         });

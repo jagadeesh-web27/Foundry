@@ -20,6 +20,8 @@ Some Rust tests read real machine state (battery, installed apps, the Desktop fo
 
 Each suite is a JSON list of questions with expectations (`all`, `any` and `none` regexes, `minFiles`, `maxSeconds`).
 
+Date and time cases use placeholders that the harness fills in from the app page's own clock and time zone at check time: `{{weekday}}`, `{{day}}`, `{{month}}`, `{{year}}`, `{{tomorrowWeekday}}`, `{{tomorrowDay}}`, `{{tomorrowMonth}}`, and `{{time}}` (a regex matching the current minute, one minute either side).
+
 ### Desktop (Windows)
 
 ```powershell
@@ -64,6 +66,16 @@ adb shell "echo test > /sdcard/FoundryTestData/test-today-note.txt"
 ```
 
 Do not run `tests/android/android-physical-device.test.ts` casually. If the app isn't running, it reinstalls the APK and runs `pm clear`, which deletes the downloaded AI model.
+
+**File index on Android (added 6 Nov):** the app needs Android's "All files access" permission (`MANAGE_EXTERNAL_STORAGE`) to see anything beyond photos/videos/audio; without it, file search and the index only cover media. The app shows an in-app banner to grant it, or grant it directly for test automation:
+
+```powershell
+adb shell appops set com.foundry.app.debug MANAGE_EXTERNAL_STORAGE allow
+```
+
+It survives app updates (reinstalling the APK does not revoke it), but `pm clear` does revoke it, same as it wipes the model.
+
+**Wireless debugging (Wi-Fi, no cable):** `adb pair <ip>:<pairing-port> <code>` once (code and pairing port come from the phone's Developer options → Wireless debugging → "Pair device with pairing code" screen — the two "words" of that row open the page, not the toggle), then `adb connect <ip>:<port>` (the regular connect port shown on the same screen, found via `adb mdns services` if unknown). Pairing is remembered, but **the phone turns wireless debugging off when its screen locks or goes idle** — if `adb devices` and `adb mdns services` both come up empty while the phone still answers `ping`, the toggle has turned off; wake the phone and switch it back on (no re-pairing needed), then `adb connect` again.
 
 ## 3. Reports
 
