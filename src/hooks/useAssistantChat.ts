@@ -252,6 +252,11 @@ export function useAssistantChat({
       trace('[PIPELINE_TRACE] USER QUERY (UI):', q);
 
       try {
+        const lastAssistantTurn = [...turns].reverse().find((t) => t.role === 'assistant' && t.files && t.files.length > 0);
+        const conversationContext = lastAssistantTurn
+          ? { lastFiles: lastAssistantTurn.files!, lastPlan: lastAssistantTurn.plan }
+          : undefined;
+
         const agentResponse = await agentRunner.run(
           q,
           {
@@ -261,7 +266,8 @@ export function useAssistantChat({
             revealFile,
           },
           aiService || undefined,
-          aiStatus.isAvailable
+          aiStatus.isAvailable,
+          conversationContext
         );
 
         trace('[PIPELINE_TRACE] CHAT UI (Received Final Assistant Response):', agentResponse.message);

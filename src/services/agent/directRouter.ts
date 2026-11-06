@@ -9,6 +9,7 @@
 import { IndexedFile } from '@/types/file';
 import { AIService } from '@/services/ai/aiService';
 import { computerTools, AgentContext } from './tools';
+import { answerFromEvidence, INSUFFICIENT_EVIDENCE_MESSAGE } from './groundedAnswer';
 
 export interface FileSearchArgs {
   query?: string;
@@ -406,50 +407,30 @@ export async function runDirectRoute(
         tools.push('searchFiles');
         const files = await searchWithFallback(route.args, context, 10);
         if (files.length === 0) return { message: `I couldn't find "${route.label}" on this device to read.`, toolsExecuted: tools, files: [] };
-        // The best-ranked match is not always readable (empty, scanned or broken files): use the first of
-        // the top candidates that actually contains text, and say which ones were skipped.
+        // Grounded in the file's real text, with a citation marker, never a guess. Only the single
+        // best-ranked candidate is used as evidence: a plain "read X" names one specific document.
         tools.push('readFile');
-        let chosen: IndexedFile | null = null;
-        let text = '';
-        const skipped: string[] = [];
-        for (const candidate of files.slice(0, 5)) {
-          let content = '';
-          try {
-            content = String((await computerTools.readFile.execute({ path: candidate.path, maxChars: 6000 }, context)) || '').trim();
-          } catch {
-            content = '';
-          }
-          if (content.length >= 40) {
-            chosen = candidate;
-            text = content;
-            break;
-          }
-          skipped.push(candidate.name);
-        }
-        if (!chosen) {
+        const result = await answerFromEvidence(
+          { intent: 'read', confidence: 1, rawQuery: userInput },
+          userInput,
+          files,
+          context,
+          ai,
+          1,
+        );
+        if (result.message === INSUFFICIENT_EVIDENCE_MESSAGE) {
           return {
-            message: `I found ${plural(files.length, 'matching file')}, but none of the top ones contain readable text (they may be scanned images): ${skipped.slice(0, 3).join(', ')}.`,
+            message: `I found ${plural(files.length, 'matching file')}, but none of the top ones contain readable text (they may be scanned images).`,
             toolsExecuted: tools,
             files: files.slice(0, 3),
           };
         }
-        const note = skipped.length ? `
-
-_(Skipped ${skipped.join(', ')}: no readable text.)_` : '';
-        if (!ai?.available) {
-          return { message: `I found **${chosen.name}**. The on-device AI is not ready yet, so here is the beginning of the file:
-
-${text.slice(0, 600)}${note}`, toolsExecuted: tools, files: [chosen] };
-        }
-        const summary = await ai.service.getProvider().chat([
-          { role: 'system', content: 'You are Foundry. Summarize the document below for the user in a few short, factual sentences. Use only the text provided. Do not invent details.' },
-          { role: 'user', content: `Document "${chosen.name}":
----
-${text.slice(0, 3500)}
----
-Request: ${userInput}` },
-        ]);
-        return { message: `${summary.trim() || `I found **${chosen.name}**.`}${note}`, toolsExecuted: tools, files: [chosen], plan: { intent: 'DIRECT_READ' } };
+        return {
+          message: result.message,
+          toolsExecuted: tools,
+          files: result.files,
+          plan: { intent: 'DIRECT_READ', sourceLabel: result.sourceLabel, citations: result.citations },
+        };
       }
     }
   } catch (err: any) {

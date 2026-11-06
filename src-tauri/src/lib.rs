@@ -4,6 +4,7 @@ pub mod access_policy;
 pub mod fuzzy;
 pub mod extract;
 pub mod index;
+pub mod ocr;
 pub mod filesystem;
 pub mod system;
 pub mod applications;
@@ -177,6 +178,13 @@ fn request_storage_access() -> Result<bool, String> {
     Ok(true)
 }
 
+/// Whether OCR (text recognition in scanned documents/photos) is available. No engine is bundled
+/// yet, so this always reports unavailable with an honest reason — see `ocr.rs`.
+#[tauri::command]
+fn ocr_status() -> ocr::OcrStatus {
+    ocr::status()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -243,6 +251,7 @@ pub fn run() {
             index_rebuild,
             storage_access_status,
             request_storage_access,
+            ocr_status,
             oauth::wait_for_oauth_callback,
             oauth::open_browser_url,
             security::secure_save_token,
@@ -486,6 +495,44 @@ mod tests {
         );
         println!("After deleting FoundryTestRenamed: {:?}", res3);
         assert!(res3.is_empty(), "Deleted folder should immediately disappear");
+    }
+
+    #[test]
+    fn test_read_file_content_missing_file_is_honest() {
+        let profile = std::env::var("USERPROFILE").unwrap();
+        let missing = PathBuf::from(&profile).join("Desktop").join("FoundryTestDoesNotExist.txt");
+        let result = read_file_content(missing.to_string_lossy().to_string(), 1000);
+        assert!(result.is_err(), "Reading a file that doesn't exist must fail, never fabricate content");
+        let err = result.unwrap_err();
+        assert!(!err.is_empty());
+    }
+
+    #[test]
+    fn test_read_file_content_outside_accessible_roots_is_refused() {
+        // win.ini always exists on Windows and is outside the user's profile/data-drive roots.
+        let result = read_file_content("C:\\Windows\\win.ini".to_string(), 1000);
+        assert!(result.is_err(), "A path outside the accessible roots must be refused, never read");
+        let err = result.unwrap_err();
+        assert!(
+            err.contains("outside the folders") || err.contains("hidden or system"),
+            "Error should explain the refusal, got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_read_file_content_corrupt_document_is_honest() {
+        let profile = std::env::var("USERPROFILE").unwrap();
+        let onedrive_desktop = PathBuf::from(&profile).join("OneDrive").join("Desktop");
+        let desktop = if onedrive_desktop.exists() { onedrive_desktop } else { PathBuf::from(&profile).join("Desktop") };
+        let broken = desktop.join("FoundryTestBroken.pdf");
+        fs::write(&broken, b"%PDF-1.4 not actually a pdf").unwrap();
+        let result = read_file_content(broken.to_string_lossy().to_string(), 1000);
+        let _ = fs::remove_file(&broken);
+        assert_eq!(
+            result,
+            Err("No readable text was found in this document (it may be a scanned image or too large).".to_string()),
+            "A document with no extractable text must say so plainly, never return placeholder/fabricated content"
+        );
     }
 
     #[test]

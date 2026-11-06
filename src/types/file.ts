@@ -29,6 +29,10 @@ export interface IndexedFile {
   snippet?: string;
   /** Where the search matched: file name, folder path or file contents. */
   matchIn?: 'name' | 'folder' | 'content';
+  /** Relevance of a content match, from the index; higher is more relevant. Undefined for a live disk walk. */
+  relevanceScore?: number;
+  /** Whether this file's text is available to quote as evidence. Undefined for a live disk walk. */
+  extractionStatus?: 'ok' | 'pending' | 'unsupported_type' | 'failed';
 }
 
 export interface IndexedFolder {

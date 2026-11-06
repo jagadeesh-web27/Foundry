@@ -46,6 +46,8 @@ interface NativeDiscoveredFile {
   mime_type?: string;
   snippet?: string;
   match_in?: 'name' | 'folder' | 'content';
+  relevance_score?: number;
+  extraction_status?: 'ok' | 'pending' | 'unsupported_type' | 'failed';
 }
 
 interface NativeDiscoveredFolder {
@@ -200,6 +202,8 @@ export class ComputerService {
         isScreenRecording,
         snippet: f.snippet,
         matchIn: f.match_in,
+        relevanceScore: f.relevance_score,
+        extractionStatus: f.extraction_status,
       };
     });
   }

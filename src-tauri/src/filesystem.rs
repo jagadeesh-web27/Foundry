@@ -24,6 +24,15 @@ pub struct DiscoveredFile {
     /// Where the query matched: "name", "folder" or "content".
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub match_in: Option<String>,
+    /// Relevance of a content match (from the index's BM25 rank; higher is more relevant).
+    /// `None` for name/folder matches and for results that bypassed the index (a live disk walk).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub relevance_score: Option<f64>,
+    /// Whether this file's text is available to quote as evidence: "ok", "pending" (not extracted
+    /// yet), "unsupported_type" (no extractor for this kind of file) or "failed" (extraction
+    /// errored). `None` when the index wasn't consulted (a live disk walk).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extraction_status: Option<String>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
@@ -917,6 +926,8 @@ fn search_files_recursive(
                 mime_type: None,
                 snippet: None,
                 match_in: None,
+                relevance_score: None,
+                extraction_status: None,
             });
         }
     }
@@ -982,6 +993,8 @@ pub fn get_file_metadata(path: String) -> Result<DiscoveredFile, String> {
         mime_type: None,
         snippet: None,
         match_in: None,
+        relevance_score: None,
+        extraction_status: None,
     })
 }
 

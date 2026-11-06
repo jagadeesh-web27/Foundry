@@ -528,8 +528,9 @@ pub fn get_application_details(application: String) -> Result<ApplicationDetails
 
 #[tauri::command(async)]
 pub fn resolve_installed_application(query: String) -> Result<ResolvedApplication, String> {
+    // Never log the raw user query in production: it's user-typed text, not diagnostic metadata.
+    #[cfg(debug_assertions)]
     println!("[FOUNDry] Application request:\n{}", query);
-    println!("[FOUNDry] Searching installed applications...");
 
     let apps = discover_installed_applications_internal();
 

@@ -396,6 +396,20 @@ export const MainAssistantPage: React.FC = () => {
                         <div className="whitespace-pre-wrap font-normal break-words leading-relaxed select-text">{turn.content}</div>
                       )}
 
+                      {/* Source label for a grounded, cited answer */}
+                      {turn.plan?.sourceLabel && (
+                        <div className="flex items-center gap-1 pt-0.5">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                            {{
+                              files: 'From your files',
+                              device: 'From device information',
+                              general: 'General knowledge',
+                              mixed: 'Mixed sources',
+                            }[turn.plan.sourceLabel as string] ?? turn.plan.sourceLabel}
+                          </span>
+                        </div>
+                      )}
+
                       {/* File Result Cards */}
                       {turn.files && turn.files.length > 0 && (
                         <div className="space-y-1.5 pt-1">

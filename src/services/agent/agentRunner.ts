@@ -9,6 +9,8 @@ import { toolRegistry } from '@/services/tools/toolRegistry';
 import { computerService } from '@/services/native/computerService';
 import { routeQuery, runDirectRoute, normalizeInput, looksLikeGeneralKnowledge } from './directRouter';
 import { answerClockQuestion } from './clockAnswers';
+import { answerFromEvidence } from './groundedAnswer';
+import { resolveReference, ConversationContext } from './referenceResolver';
 
 // Agent execution trace step
 export interface AgentTraceStep {
@@ -43,12 +45,69 @@ export class AgentRunner {
     userInput: string,
     context: AgentContext,
     aiService?: AIService,
-    isAiAvailable: boolean = false
+    isAiAvailable: boolean = false,
+    conversationContext?: ConversationContext
   ): Promise<AgentResponse> {
     // Date and time come from the device clock, never from the model (which has no clock and guesses).
     const clockAnswer = answerClockQuestion(userInput);
     if (clockAnswer) {
       return { message: clockAnswer, files: [], folders: [], toolsExecuted: [], plan: { intent: 'SYSTEM_DATETIME' } };
+    }
+
+    // "summarize the second one", "open that file", "compare it with the other PDF": resolved against
+    // the previous turn's result set before any fresh search, so a reference is never misread as a
+    // literal file name (routeQuery would otherwise search for a file named "second one").
+    const reference = resolveReference(userInput, conversationContext);
+    if (reference.kind !== 'not_a_reference') {
+      if (reference.kind === 'no_context') {
+        return {
+          message: "I don't have a specific file from earlier in this conversation to match that — could you say which one, or search again?",
+          files: [],
+          folders: [],
+          toolsExecuted: [],
+          plan: { intent: 'FOLLOWUP_NO_CONTEXT' },
+        };
+      }
+      if (reference.kind === 'ambiguous') {
+        const names = reference.candidates.map((f) => f.name).join(', ');
+        return {
+          message: `I'm not sure which one you mean — ${names}. Could you say which one?`,
+          files: reference.candidates.slice(0, 5),
+          folders: [],
+          toolsExecuted: [],
+          plan: { intent: 'FOLLOWUP_AMBIGUOUS' },
+        };
+      }
+      const files = reference.files;
+      if (/\b(open|launch|reveal)\b/i.test(userInput) && files.length === 1) {
+        const opened = await context.openFile(files[0].path).catch(() => false);
+        return {
+          message: opened ? `Opening **${files[0].name}**.` : `I couldn't open **${files[0].name}**.`,
+          files,
+          folders: [],
+          toolsExecuted: ['openFile'],
+          plan: { intent: 'FOLLOWUP_OPEN' },
+        };
+      }
+      let aiReady = isAiAvailable;
+      if (aiService && !aiReady) {
+        aiReady = await aiService.checkStatus().then((st) => st.isAvailable).catch(() => false);
+      }
+      const result = await answerFromEvidence(
+        { intent: 'read', confidence: 1, rawQuery: userInput },
+        userInput,
+        files,
+        context,
+        aiService ? { service: aiService, available: aiReady } : undefined,
+        Math.max(files.length, 1),
+      );
+      return {
+        message: result.message,
+        files: result.files,
+        folders: [],
+        toolsExecuted: ['readFile'],
+        plan: { intent: 'FOLLOWUP_GROUNDED', sourceLabel: result.sourceLabel, citations: result.citations },
+      };
     }
 
     // Clear device / file questions in the native app (desktop and Android) are answered by rules and the

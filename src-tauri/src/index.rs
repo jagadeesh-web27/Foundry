@@ -666,14 +666,15 @@ impl Index {
         documents_only: bool,
     ) -> Result<Vec<DiscoveredFile>, String> {
         let mut sql = String::from(
-            "SELECT f.path, f.name, f.ext, f.size, f.created_ms, f.modified_ms, f.file_type, ",
+            "SELECT f.path, f.name, f.ext, f.size, f.created_ms, f.modified_ms, f.file_type, f.content_state, ",
         );
         let mut args: Vec<rusqlite::types::Value> = Vec::new();
         if let Some(expr) = fts {
-            sql.push_str("snippet(files_fts, 2, '', '', '…', 16) FROM files_fts JOIN files f ON f.id = files_fts.rowid WHERE files_fts MATCH ?");
+            // bm25 is negative (lower = more relevant); negate so a higher relevance_score means a better match.
+            sql.push_str("snippet(files_fts, 2, '', '', '…', 16), -bm25(files_fts, 10.0, 3.0, 1.0) FROM files_fts JOIN files f ON f.id = files_fts.rowid WHERE files_fts MATCH ?");
             args.push(expr.to_string().into());
         } else {
-            sql.push_str("NULL FROM files f WHERE 1 = 1");
+            sql.push_str("NULL, NULL FROM files f WHERE 1 = 1");
         }
         if let Some(ext) = p.extension.as_deref().filter(|e| !e.is_empty()) {
             sql.push_str(" AND f.ext = ?");
@@ -729,13 +730,16 @@ impl Index {
                     r.get::<_, Option<i64>>(4)?,
                     r.get::<_, Option<i64>>(5)?,
                     r.get::<_, String>(6)?,
-                    r.get::<_, Option<String>>(7)?,
+                    r.get::<_, i64>(7)?,
+                    r.get::<_, Option<String>>(8)?,
+                    r.get::<_, Option<f64>>(9)?,
                 ))
             })
             .map_err(|e| format!("Index query failed: {e}"))?;
         let mut out = Vec::new();
         for row in rows {
-            let (path, name, ext, size, created, modified, file_type, snippet) = row.map_err(|e| e.to_string())?;
+            let (path, name, ext, size, created, modified, file_type, content_state, snippet, relevance_score) =
+                row.map_err(|e| e.to_string())?;
             let lpath = path.to_lowercase();
             let match_in = if words.is_empty() {
                 None
@@ -747,6 +751,15 @@ impl Index {
                 Some("content".to_string())
             };
             let snippet = if match_in.as_deref() == Some("content") { snippet.filter(|s| !s.trim().is_empty()) } else { None };
+            let extraction_status = Some(
+                match content_state {
+                    CONTENT_INDEXED => "ok",
+                    CONTENT_NONE => "unsupported_type",
+                    CONTENT_FAILED => "failed",
+                    _ => "pending",
+                }
+                .to_string(),
+            );
             out.push(DiscoveredFile {
                 path,
                 name,
@@ -759,6 +772,8 @@ impl Index {
                 mime_type: None,
                 snippet,
                 match_in,
+                relevance_score,
+                extraction_status,
             });
         }
         Ok(out)
@@ -1129,6 +1144,37 @@ mod tests {
         assert_eq!(about, vec!["OfferLetter2026.docx"]);
         // camel case / digits in names are split
         assert_eq!(fx.find("offer letter"), vec!["OfferLetter2026.docx"]);
+    }
+
+    #[test]
+    fn content_matches_carry_a_relevance_score() {
+        let fx = Fixture::new("score");
+        fx.crawl_and_extract();
+        let hits = fx
+            .index
+            .search(&SearchParams { query: Some("documents related to state management".into()), limit: 10, content: true, ..Default::default() })
+            .unwrap();
+        assert_eq!(hits[0].name, "react-notes.md");
+        assert!(hits[0].relevance_score.is_some(), "a content match must carry a relevance score for citations");
+        // A query without any search words (pure browsing) never touches FTS/bm25, so there's no score to give.
+        let browsed = fx.index.search(&SearchParams { limit: 10, ..Default::default() }).unwrap();
+        assert!(browsed.iter().all(|f| f.relevance_score.is_none()));
+    }
+
+    #[test]
+    fn extraction_status_reflects_real_outcomes() {
+        let fx = Fixture::new("extraction_status");
+        std::fs::write(fx.root.join("Personal").join("Fake_Report.docx"), b"not actually a zip").unwrap();
+        fx.crawl_and_extract();
+
+        let ok = fx.index.search(&SearchParams { query: Some("react-notes".into()), limit: 5, ..Default::default() }).unwrap();
+        assert_eq!(ok[0].extraction_status.as_deref(), Some("ok"), "a plain text file extracts cleanly");
+
+        let unsupported = fx.index.search(&SearchParams { query: Some("aadhaar".into()), limit: 5, ..Default::default() }).unwrap();
+        assert_eq!(unsupported[0].extraction_status.as_deref(), Some("unsupported_type"), "an image has no extractor, and must say so honestly");
+
+        let failed = fx.index.search(&SearchParams { query: Some("fake report".into()), limit: 5, ..Default::default() }).unwrap();
+        assert_eq!(failed[0].extraction_status.as_deref(), Some("failed"), "a corrupt document must say extraction failed, never silently succeed empty");
     }
 
     #[test]
