@@ -1,0 +1,46 @@
+{
+  "description": "Live verification of natural-language size/age comparison file search on the real physical Android phone, against its real files. Expectations are deliberately loose (this phone's real file set is unknown in advance) — the point is to capture and manually read the real answer, tool trace and file count from the report, not to assert a predicted filename.",
+  "timeoutSec": 240,
+  "cases": [
+    {
+      "id": "biggest-file",
+      "query": "what is my biggest file?",
+      "expect": { "any": ["."] }
+    },
+    {
+      "id": "smallest-image",
+      "query": "show the smallest image",
+      "expect": { "any": ["."] }
+    },
+    {
+      "id": "largest-video",
+      "query": "which video takes the most space?",
+      "expect": { "any": ["."] }
+    },
+    {
+      "id": "followup-smallest-video",
+      "query": "what about the smallest one?",
+      "expect": { "any": ["."] }
+    },
+    {
+      "id": "biggest-pdf",
+      "query": "show the biggest PDF",
+      "expect": { "any": ["."] }
+    },
+    {
+      "id": "find-large-videos-list",
+      "query": "find large videos",
+      "expect": { "any": ["."] }
+    },
+    {
+      "id": "count-images-in-dcim",
+      "query": "how many images are in DCIM",
+      "expect": { "all": ["you have (?:\\d+) "] }
+    },
+    {
+      "id": "biggest-file-in-downloads",
+      "query": "what is the largest file in Downloads?",
+      "expect": { "any": ["."] }
+    }
+  ]
+}

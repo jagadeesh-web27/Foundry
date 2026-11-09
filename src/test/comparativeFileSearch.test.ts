@@ -12,6 +12,7 @@ import {
   detectLimit,
   detectScope,
   buildComparisonRoute,
+  looksLikeGeneralKnowledge,
 } from '@/services/agent/directRouter';
 import { detectComparisonFollowUp } from '@/services/agent/referenceResolver';
 import { computerTools, AgentContext } from '@/services/agent/tools';
@@ -61,7 +62,7 @@ describe('directRouter: comparison word -> structured sort instruction (not a fi
     const route = routeQuery('what are the 5 largest files in Downloads?') as any;
     expect(route.kind).toBe('search');
     expect(route.args.limit).toBe(5);
-    expect(route.args.scopePath).toBe('Downloads');
+    expect(route.args.scopePath).toBe('Download');
     expect(route.args.sortBy).toBe('size');
     expect(route.args.sortOrder).toBe('desc');
     expect(route.args.query).toBeUndefined();
@@ -72,7 +73,7 @@ describe('directRouter: comparison word -> structured sort instruction (not a fi
     expect(route.kind).toBe('search');
     expect(route.args.extension).toBe('pdf');
     expect(route.args.limit).toBe(5);
-    expect(route.args.scopePath).toBe('Downloads');
+    expect(route.args.scopePath).toBe('Download');
     expect(route.args.sortOrder).toBe('asc');
     expect(route.args.query).toBeUndefined();
   });
@@ -94,6 +95,24 @@ describe('directRouter: comparison word -> structured sort instruction (not a fi
     expect(route.args.extension).toBe(ext);
     expect(route.args.query).toBeUndefined();
     expect(route.args.sortBy).toBe('size');
+  });
+
+  it('a comparison question without "my" is never misclassified as general knowledge (found live on a real device: it was hallucinating an answer instead of searching)', () => {
+    expect(looksLikeGeneralKnowledge('what is the largest file in Downloads?')).toBe(false);
+    expect(looksLikeGeneralKnowledge('what are the 5 largest files in Downloads?')).toBe(false);
+    expect(looksLikeGeneralKnowledge('what is the smallest video?')).toBe(false);
+    // Genuine general-knowledge questions that happen to mention a file format are unaffected.
+    expect(looksLikeGeneralKnowledge('what is a PDF?')).toBe(true);
+    expect(looksLikeGeneralKnowledge('what is RAM')).toBe(true);
+  });
+
+  it('"what is the largest file in Downloads?" routes to a real search, not the AI', () => {
+    const route = routeQuery('what is the largest file in Downloads?') as any;
+    expect(route.kind).toBe('search');
+    expect(route.args.scopePath).toBe('Download');
+    expect(route.args.sortBy).toBe('size');
+    expect(route.args.sortOrder).toBe('desc');
+    expect(route.args.limit).toBe(1);
   });
 
   it('detectComparison/detectLimit/detectScope are pure and reusable outside routeQuery', () => {
@@ -231,7 +250,7 @@ describe('Native adapter dispatch: sortBy/sortOrder/limit/fileTypes/scopePath re
     const route = routeQuery('show the 5 smallest PDFs in Downloads') as any;
     await computerTools.searchFiles.execute(route.args, blankContext);
     expect(invoke).toHaveBeenCalledWith('search_files_live', expect.objectContaining({
-      scopePath: 'Downloads',
+      scopePath: 'Download',
       extension: 'pdf',
       sortOrder: 'asc',
       limit: 5,

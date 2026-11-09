@@ -210,13 +210,16 @@ export function normalizeInput(userInput: string): string {
 
 /**
  * True for knowledge questions that should go to the AI even if they mention a device word
- * ("what is RAM", "explain how wifi works"). Personal phrasing ("my", "do I have") is not general.
+ * ("what is RAM", "explain how wifi works"). Personal phrasing ("my", "do I have") is not general —
+ * and neither is a size/age comparison ("what is the largest file in Downloads?"), even without an
+ * explicit "my": found live on a real device, where this phrase (no "my") was misrouted to the AI,
+ * which fabricated an answer ("647 GB was downloaded last week") instead of running a real search.
  */
 export function looksLikeGeneralKnowledge(text: string): boolean {
   const t = text.trim().toLowerCase();
   const starts = /^(?:what is|what are|what's|explain|who is|who was|why is|why do|how do|how does|how to|write|code|tell me about|translate|convert|define|meaning of)\b/.test(t);
   const personal = /\b(my|mine|do i have|i have|on my|this (computer|laptop|phone|device))\b/.test(t);
-  return starts && !personal;
+  return starts && !personal && !detectComparison(t);
 }
 
 // Questions about Foundry's own task / goal / calendar features are not file searches.
@@ -262,8 +265,14 @@ export function detectComparison(text: string): ComparisonMatch | null {
   return null;
 }
 
+// The scope filter is a case-insensitive SUBSTRING match against the real file path (see index.rs),
+// so the shorter form must be used wherever platforms disagree on plural: Android's real folder is
+// "Download" (singular — Android's own DIRECTORY_DOWNLOADS constant's value is "Download", despite
+// the name), Windows' is "Downloads" (plural). "download" matches inside both; "Downloads" would
+// silently fail to match Android's real folder (found live on a real device: a real file in
+// /storage/emulated/0/Download was reported as "not found" when searched "in Downloads").
 const SCOPE_WORD_TO_FOLDER: { [key: string]: string } = {
-  download: 'Downloads', downloads: 'Downloads',
+  download: 'Download', downloads: 'Download',
   document: 'Documents', documents: 'Documents',
   picture: 'Pictures', pictures: 'Pictures',
   photo: 'DCIM', photos: 'DCIM', dcim: 'DCIM', camera: 'DCIM',
