@@ -1,5 +1,6 @@
 export type ComputerFileType =
   | 'Document'
+  | 'PDF'
   | 'Image'
   | 'Video'
   | 'Audio'

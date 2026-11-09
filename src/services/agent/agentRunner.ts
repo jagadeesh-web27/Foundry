@@ -7,10 +7,10 @@ import { AIService } from '@/services/ai/aiService';
 import { dynamicAgent, PendingAction } from './dynamicAgent';
 import { toolRegistry } from '@/services/tools/toolRegistry';
 import { computerService } from '@/services/native/computerService';
-import { routeQuery, runDirectRoute, normalizeInput, looksLikeGeneralKnowledge } from './directRouter';
+import { routeQuery, runDirectRoute, normalizeInput, looksLikeGeneralKnowledge, detectComparison, detectLimit, buildComparisonRoute } from './directRouter';
 import { answerClockQuestion } from './clockAnswers';
 import { answerFromEvidence } from './groundedAnswer';
-import { resolveReference, ConversationContext } from './referenceResolver';
+import { resolveReference, detectComparisonFollowUp, ConversationContext } from './referenceResolver';
 
 // Agent execution trace step
 export interface AgentTraceStep {
@@ -52,6 +52,22 @@ export class AgentRunner {
     const clockAnswer = answerClockQuestion(userInput);
     if (clockAnswer) {
       return { message: clockAnswer, files: [], folders: [], toolsExecuted: [], plan: { intent: 'SYSTEM_DATETIME' } };
+    }
+
+    // "what about the smallest one?" after "the largest video": the previous turn's single-file
+    // result set can't answer this by re-indexing, so the previous search's file-type/scope is
+    // redone with the new comparison instead.
+    const comparisonFollowUp = detectComparisonFollowUp(userInput, conversationContext);
+    if (comparisonFollowUp) {
+      const route = buildComparisonRoute(conversationContext!.lastSearchArgs!, comparisonFollowUp, userInput);
+      const direct = await runDirectRoute(route, userInput, context);
+      return {
+        message: direct.message,
+        files: direct.files,
+        folders: direct.folders,
+        toolsExecuted: direct.toolsExecuted,
+        plan: direct.plan ?? { intent: 'FOLLOWUP_COMPARISON' },
+      };
     }
 
     // "summarize the second one", "open that file", "compare it with the other PDF": resolved against
@@ -1331,12 +1347,15 @@ export class AgentRunner {
 
       // Handle other requests (count, open, reveal, or general search)
       else {
-        // Build search arguments
-        const isLargestQuery = /\b(largest|biggest|takes?\s+(the\s+)?most\s+space|large\s+size|biggest\s+size)\b/i.test(userInput);
-        const searchArgs: any = { limit: isLargestQuery ? 1 : 20 };
-        if (isLargestQuery) {
-          searchArgs.sortBy = 'size';
-          searchArgs.sortOrder = 'desc';
+        // Build search arguments. Comparison detection ("the larger video", "biggest PDF") is the
+        // one canonical directRouter.ts helper, shared with the real Tauri routing path and
+        // dynamicAgent's tool-argument normalization — never a one-off regex here.
+        const comparison = detectComparison(userInput);
+        const limit = detectLimit(userInput, comparison);
+        const searchArgs: any = { limit: limit ?? 20 };
+        if (comparison) {
+          searchArgs.sortBy = comparison.sortBy;
+          searchArgs.sortOrder = comparison.sortOrder;
         }
         if (/\b(camera|dcim)\b/i.test(userInput)) {
           searchArgs.fileTypes = ['Image'];
@@ -1365,7 +1384,7 @@ export class AgentRunner {
           searchArgs.fileTypes = ['Spreadsheet'];
         }
 
-        if (meaningfulWords.length > 0 && !isLargestQuery) {
+        if (meaningfulWords.length > 0 && !comparison) {
           searchArgs.query = meaningfulWords.join(' ');
         }
         if (extension) {
@@ -1443,14 +1462,14 @@ export class AgentRunner {
         // Default: return search results
         else {
           if (files.length > 0) {
-            if (isLargestQuery) {
+            if (comparison && files.length === 1) {
               const top = files[0];
               const sizeDisplay = (top as any).sizeFormatted || `${top.size || 0} bytes`;
               return {
-                message: `The largest file is **${top.name}** (${sizeDisplay}), located at \`${top.path}\`.`,
+                message: `The ${comparison.comparison} file is **${top.name}** (${sizeDisplay}), located at \`${top.path}\`.`,
                 files: [top],
                 toolsExecuted: executedTools,
-                plan: { intent: 'FIND_LARGEST_FILE', targetObject: 'FILE' },
+                plan: { intent: 'FIND_COMPARISON_FILE', targetObject: 'FILE' },
               };
             }
 
@@ -1465,7 +1484,7 @@ export class AgentRunner {
               topicPhrase = 'resume documents';
             }
 
-            let message = `I found **${files.length}** ${topicPhrase} matching your request:`;
+            let message = `I found **${files.length}** ${topicPhrase} matching your request${comparison ? `, sorted ${comparison.sortOrder === 'asc' ? 'smallest to largest' : 'largest to smallest'}` : ''}:`;
 
             return {
               message: message,

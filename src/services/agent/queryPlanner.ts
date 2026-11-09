@@ -175,8 +175,12 @@ export function planQuery(rawInput: string): QueryPlan {
       }
 
       case 'search': {
+        // 'recent' means date-driven recency specifically; a pure size comparison ("my biggest
+        // file") also has no query/extension/fileTypes but sorts by size, not by date, and is
+        // still a 'find'.
         const timeDrivenOnly =
-          !route.args.query && !route.args.extension && !route.args.fileTypes && !!route.args.sortBy;
+          !route.args.query && !route.args.extension && !route.args.fileTypes &&
+          (route.args.sortBy === 'modified' || route.args.sortBy === 'created');
         return {
           intent: timeDrivenOnly ? 'recent' : 'find',
           confidence: 0.85,

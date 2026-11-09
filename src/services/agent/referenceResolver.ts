@@ -5,11 +5,16 @@
  */
 import { IndexedFile } from '@/types/file';
 import { QueryPlan } from './queryPlanner';
+import { FileSearchArgs, ComparisonMatch, detectComparison } from './directRouter';
 
 export interface ConversationContext {
   /** The ordered file result set from the previous turn, if any. */
   lastFiles: IndexedFile[];
   lastPlan?: QueryPlan;
+  /** The real searchFiles/countFiles arguments the previous turn actually used, when it was a direct
+   * file search — lets a bare comparison follow-up ("what about the smallest one?") redo the same
+   * search with a different sort instead of only re-indexing into the (often single-item) result list. */
+  lastSearchArgs?: FileSearchArgs;
 }
 
 export type ReferenceResolution =
@@ -36,6 +41,17 @@ const OTHER_RE = /\bthe other\b(?:\s+\w+)?|\banother\s+(?:one|pdf|file|document)
 /** Does this input look like it refers back to a result from an earlier turn? */
 export function isFollowUpReference(input: string): boolean {
   return ORDINAL_RE.test(input) || NUMBER_RE.test(input) || OTHER_RE.test(input) || PRONOUN_RE.test(input);
+}
+
+/** "what about the smallest one?", "and the oldest one" after a size/age comparison search: a
+ * generic referent ("one"/"instead") plus a new comparison word. Picking from the previous turn's
+ * result set isn't enough here — that set may hold only the single largest file — so this is
+ * recognized separately and answered by redoing the previous search with the new sort direction. */
+const FOLLOWUP_CUE_RE = /\b(what about|how about|and the|show me the|instead|one)\b/i;
+
+export function detectComparisonFollowUp(input: string, context: ConversationContext | undefined): ComparisonMatch | null {
+  if (!context?.lastSearchArgs || !FOLLOWUP_CUE_RE.test(input)) return null;
+  return detectComparison(input);
 }
 
 export function resolveReference(input: string, context: ConversationContext | undefined): ReferenceResolution {

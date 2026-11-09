@@ -1218,6 +1218,38 @@ mod tests {
         assert!(fx.search(SearchParams { modified_before_ms: Some(1), limit: 50, ..Default::default() }).is_empty());
     }
 
+    /// Natural-language comparative queries ("the largest video", "the 2 biggest files in a folder")
+    /// are planned entirely in TypeScript (directRouter.ts); this is the SQL layer they ultimately
+    /// rely on — sort_by=size combined with a scope filter, and a limit applied strictly after
+    /// sorting rather than before it.
+    #[test]
+    fn sorts_by_size_within_a_scope_and_applies_limit_after_sorting() {
+        let fx = Fixture::new("size_sort");
+        // A dedicated folder, so pre-existing fixture files (react-notes.md, package.json, ...)
+        // never compete with these deliberately-sized ones for "largest"/"smallest".
+        std::fs::create_dir_all(fx.root.join("Sizes")).unwrap();
+        std::fs::write(fx.root.join("Sizes").join("tiny.bin"), vec![0u8; 100]).unwrap();
+        std::fs::write(fx.root.join("Sizes").join("medium.bin"), vec![0u8; 5_000]).unwrap();
+        std::fs::write(fx.root.join("Sizes").join("huge.bin"), vec![0u8; 50_000]).unwrap();
+        std::fs::write(fx.root.join("Personal").join("bigger_elsewhere.bin"), vec![0u8; 200_000]).unwrap();
+        fx.crawl_and_extract();
+
+        // Scoped to Sizes: the file outside the scope (bigger_elsewhere.bin) must never appear, even
+        // though it is the largest file in the whole index.
+        let scoped_desc = fx.search(SearchParams { scope: Some("Sizes".into()), sort_by: Some("size".into()), limit: 50, ..Default::default() });
+        assert_eq!(scoped_desc[0], "huge.bin", "largest-first within the scope");
+        assert!(!scoped_desc.contains(&"bigger_elsewhere.bin".to_string()), "scope must exclude files outside it");
+
+        // Limit applied after sorting, not before: asking for the top 1 across the whole index must
+        // return the single largest file, not just the first one a directory walk happens to see.
+        let top1 = fx.search(SearchParams { sort_by: Some("size".into()), limit: 1, ..Default::default() });
+        assert_eq!(top1, vec!["bigger_elsewhere.bin"]);
+
+        // Ascending sort for "smallest": the tiniest file within the scope.
+        let smallest = fx.search(SearchParams { scope: Some("Sizes".into()), sort_by: Some("size".into()), sort_asc: true, limit: 1, ..Default::default() });
+        assert_eq!(smallest, vec!["tiny.bin"]);
+    }
+
     #[test]
     fn incremental_updates_and_deletions() {
         let fx = Fixture::new("incremental");

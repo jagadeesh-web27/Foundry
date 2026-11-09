@@ -254,7 +254,11 @@ export function useAssistantChat({
       try {
         const lastAssistantTurn = [...turns].reverse().find((t) => t.role === 'assistant' && t.files && t.files.length > 0);
         const conversationContext = lastAssistantTurn
-          ? { lastFiles: lastAssistantTurn.files!, lastPlan: lastAssistantTurn.plan }
+          ? {
+              lastFiles: lastAssistantTurn.files!,
+              lastPlan: lastAssistantTurn.plan,
+              lastSearchArgs: (lastAssistantTurn.plan as any)?.searchArgs,
+            }
           : undefined;
 
         const agentResponse = await agentRunner.run(

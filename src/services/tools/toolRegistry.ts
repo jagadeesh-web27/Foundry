@@ -120,8 +120,12 @@ export const toolRegistry = new ToolRegistry();
 toolRegistry.registerTools([
   {
     name: 'searchFiles',
+    // Schema and execution both delegate to computerTools.searchFiles (src/services/agent/tools.ts),
+    // the one real implementation dynamicAgent and directRouter also call — this registry used to
+    // define its own competing copy that called computerService.searchFilesLive directly, which
+    // skipped the Android device-adapter selection computerTools.searchFiles does.
     displayName: 'Search Files',
-    description: 'Search for files by query, type (Spreadsheet, Document, PDF, Video, Image, Audio, Code), extension, date modified/created, or sort by size.',
+    description: 'Search and sort files by query, type (Spreadsheet, Document, PDF, Video, Image, Audio, Code), extension, folder scope, or size/date comparison (largest, smallest, newest, oldest).',
     category: 'filesystem',
     permissionLevel: 'READ',
     humanActivityPhrase: 'Searching your files...',
@@ -131,14 +135,18 @@ toolRegistry.registerTools([
         query: { type: 'string', description: 'Name or query keyword to search for' },
         fileTypes: { type: 'array', items: { type: 'string' }, description: 'File categories such as Spreadsheet, Document, PDF, Video' },
         extension: { type: 'string', description: 'File extension without dot, e.g. xlsx, pdf' },
+        scopePath: { type: 'string', description: 'Folder to search within, e.g. Downloads, Documents, DCIM' },
         sortBy: { type: 'string', enum: ['size', 'modified', 'created', 'name'] },
         sortOrder: { type: 'string', enum: ['asc', 'desc'] },
         limit: { type: 'number', description: 'Maximum items to return' },
       },
     },
     execute: async (input) => {
-      const { computerService } = await import('@/services/native/computerService');
-      return computerService.searchFilesLive(input);
+      const { computerTools } = await import('@/services/agent/tools');
+      return computerTools.searchFiles.execute(input, {
+        indexedFiles: [], indexedFolders: [],
+        openFile: async () => false, revealFile: async () => false,
+      });
     },
   },
   {

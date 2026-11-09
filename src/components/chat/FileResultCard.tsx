@@ -21,6 +21,7 @@ interface FileResultCardProps {
 
 const TYPE_ICONS: Record<ComputerFileType, React.ComponentType<{ className?: string }>> = {
   Document: FileText,
+  PDF: FileText,
   Image: ImageIcon,
   Video: Video,
   Audio: Music,
@@ -33,6 +34,7 @@ const TYPE_ICONS: Record<ComputerFileType, React.ComponentType<{ className?: str
 
 const TYPE_COLORS: Record<ComputerFileType, string> = {
   Document: 'text-blue-500 bg-blue-500/10 border-blue-500/20',
+  PDF: 'text-red-500 bg-red-500/10 border-red-500/20',
   Image: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20',
   Video: 'text-amber-500 bg-amber-500/10 border-amber-500/20',
   Audio: 'text-purple-500 bg-purple-500/10 border-purple-500/20',

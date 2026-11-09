@@ -8,6 +8,7 @@ import { deviceService } from '@/services/device/deviceService';
 import { computerService } from '@/services/native/computerService';
 import { trace } from '@/services/debug/trace';
 import { clockContext } from './clockAnswers';
+import { detectComparison, detectLimit, detectScope, COMPARISON_WORDS } from './directRouter';
 
 export interface ToolCall {
   name: string;
@@ -909,6 +910,28 @@ ${this.getToolsDescription(intent)}
         } else if (/^(?:pdf\s+files?|pdfs?)$/i.test(q)) {
           toolCall.arguments.extension = 'pdf';
           toolCall.arguments.query = undefined;
+        }
+      }
+
+      // Never trust the small on-device model to get comparative sort/limit semantics right ("the
+      // larger video", "which document uses the most storage"): re-derive them deterministically
+      // from the user's own words with the same canonical detector directRouter.ts uses, and
+      // override whatever the model guessed (including a comparison word it echoed as `query`,
+      // which would otherwise become a literal, always-empty filename search).
+      if (userInput) {
+        const comparison = detectComparison(userInput);
+        if (comparison) {
+          toolCall.arguments.sortBy = comparison.sortBy;
+          toolCall.arguments.sortOrder = comparison.sortOrder;
+          const limit = detectLimit(userInput, comparison);
+          if (limit !== undefined) toolCall.arguments.limit = limit;
+          if (q && q.split(/\s+/).every((w) => COMPARISON_WORDS.has(w))) {
+            toolCall.arguments.query = undefined;
+          }
+        }
+        if (!toolCall.arguments.scopePath) {
+          const scope = detectScope(userInput);
+          if (scope) toolCall.arguments.scopePath = scope;
         }
       }
     }
